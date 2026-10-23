@@ -26,6 +26,7 @@ import org.geysermc.mcprotocollib.protocol.packet.configuration.clientbound.Clie
 import org.geysermc.mcprotocollib.protocol.packet.common.clientbound.ClientboundResourcePackPushPacket;
 import org.geysermc.mcprotocollib.protocol.packet.common.serverbound.ServerboundResourcePackPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerAbilitiesPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityDataPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.type.EntityType;
@@ -70,6 +71,8 @@ public final class JavaPlayClient extends SessionAdapter {
     private double playerX, playerY, playerZ;
     private float playerYaw, playerPitch;
     private int blockSequence;
+    private int abilitiesRevision;
+    private boolean permissionChanged;
     private final Map<Vector3i, Integer> blocks = new HashMap<>();
 
     private synchronized void log(String event, Object data) {
@@ -133,6 +136,12 @@ public final class JavaPlayClient extends SessionAdapter {
                     log("block_update", block);
                     changed.notifyAll();
                 }
+            } else if (packet instanceof ClientboundPlayerAbilitiesPacket abilities) {
+                synchronized (changed) {
+                    abilitiesRevision++;
+                    log("abilities", abilities);
+                    changed.notifyAll();
+                }
             } else if (packet instanceof ClientboundGameEventPacket event) {
                 log("game_event", event);
                 if (event.getNotification() == GameEvent.LEVEL_CHUNKS_LOAD_START) spawned.complete(null);
@@ -189,6 +198,25 @@ public final class JavaPlayClient extends SessionAdapter {
         log("command", command);
         String[] args = command.split(" ");
         switch (args[0]) {
+            case "fixture-permission" -> {
+                if (!username.equals("ViaJavaTest") || !Set.of("visitor", "member").contains(args[1])) throw new IllegalArgumentException(command);
+                int before;
+                synchronized (changed) { before = abilitiesRevision; }
+                permissionChanged = true;
+                setFixturePermission(args[1]);
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[2]));
+                synchronized (changed) {
+                    while (abilitiesRevision == before) {
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("Permission update not received: " + command);
+                        TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                    }
+                }
+                log("PASS", command);
+            }
+            case "dig" -> session.send(new ServerboundPlayerActionPacket(PlayerAction.valueOf(args[1]),
+                Vector3i.from(Integer.parseInt(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4])),
+                Direction.valueOf(args[5]), ++blockSequence));
             case "use-on" -> session.send(new ServerboundUseItemOnPacket(Vector3i.from(Integer.parseInt(args[1]), Integer.parseInt(args[2]), Integer.parseInt(args[3])),
                 Direction.valueOf(args[4]), Hand.MAIN_HAND, Float.parseFloat(args[5]), Float.parseFloat(args[6]), Float.parseFloat(args[7]), false, false, ++blockSequence));
             case "expect-block" -> {
@@ -356,6 +384,11 @@ public final class JavaPlayClient extends SessionAdapter {
         } finally { buffer.release(); }
     }
 
+    private static void setFixturePermission(String permission) throws Exception {
+        Process console = new ProcessBuilder("ssh", "pc", "docker exec minecraft-edu-test send-command 'permission set ViaJavaTest " + permission + "'").inheritIO().start();
+        if (!console.waitFor(30, TimeUnit.SECONDS) || console.exitValue() != 0) throw new IllegalStateException("Copy-server permission command failed");
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length < 3 || args.length > 4) throw new IllegalArgumentException("Usage: JavaPlayClient <port> <username> <commands-file-or-> [development-proxy-trace-log]");
         int port = Integer.parseInt(args[0]);
@@ -383,6 +416,7 @@ public final class JavaPlayClient extends SessionAdapter {
                 }
             }
         } finally {
+            if (client.permissionChanged) setFixturePermission("member");
             ticks.shutdownNow();
             session.disconnect("Test finished");
         }

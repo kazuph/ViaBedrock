@@ -19,6 +19,10 @@ Commands are read from a file, or from standard input when the third argument is
 - `close <window>`: close a window.
 - `select <hotbar-slot>` / `drop-selected one|all`: select a hotbar slot and send the real world Q / Ctrl+Q player action.
 - `fixture <x> <y> <z> <timeout-seconds>`: after actual spawn, teleport only `ViaJavaTest` using the authorized SSH copy-server console, then await its received position.
+- `fixture-permission visitor|member <timeout-seconds>`: change only `ViaJavaTest` on the copy server, await the Java abilities update, and always restore member on exit.
+- `dig START_DIGGING|CANCEL_DIGGING|FINISH_DIGGING <x> <y> <z> <face>`: send the actual Java block action and sequence number.
+- `use-on <x> <y> <z> <face> <hit-x> <hit-y> <hit-z>`: send a main-hand block interaction.
+- `expect-block <x> <y> <z> <java-block-state> <timeout-seconds>`: compare a received block update; independently verify world changes with the copy server console.
 - `expect-cursor <item-id> <count> <timeout-seconds>`: compare the actual received cursor.
 - `expect <window> <slot> <java-item-id> <count> <timeout-seconds>`: await server-supplied state and fail with nonzero exit if the condition is unmet.
 - `expect-spawn <timeout-seconds>`: wait for the server's spawn completion game event before testing world interactions such as dropping.

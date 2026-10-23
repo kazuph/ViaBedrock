@@ -323,12 +323,16 @@ public final class ClientPlayerPackets {
                 case START_DESTROY_BLOCK -> {
                     clientPlayer.sendSwingPacketToServer();
                     clientPlayer.cancelNextSwingPacket();
-                    clientPlayer.setBlockBreakingInfo(new ClientPlayerEntity.BlockBreakingInfo(position, direction));
-                    // TODO: Handle instant breaking
+                    clientPlayer.setBlockBreakingInfo(clientPlayer.javaGameMode() == GameMode.CREATIVE ? null : new ClientPlayerEntity.BlockBreakingInfo(position, direction));
                     // TODO: Test breaking fire
                     // TODO: The java client keeps spamming swing packets while waiting for the block break cooldown. Those need to be cancelled
 
                     clientPlayer.addAuthInputBlockAction(new ClientPlayerEntity.AuthInputBlockAction(PlayerActionType.StartDestroyBlock, position, direction.ordinal()));
+                    // Creative Java sends START alone; Bedrock still needs the completed break prediction.
+                    if (clientPlayer.javaGameMode() == GameMode.CREATIVE) {
+                        clientPlayer.addAuthInputBlockAction(new ClientPlayerEntity.AuthInputBlockAction(PlayerActionType.PredictDestroyBlock, position, direction.ordinal()));
+                        clientPlayer.addAuthInputBlockAction(new ClientPlayerEntity.AuthInputBlockAction(PlayerActionType.AbortDestroyBlock, position, 0));
+                    }
                 }
                 case ABORT_DESTROY_BLOCK -> {
                     clientPlayer.setBlockBreakingInfo(null);

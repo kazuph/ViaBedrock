@@ -1,0 +1,5 @@
+fixture 235.5 76 -84.5 30
+fixture-permission visitor 10
+dig START_DIGGING 235 76 -83 UP
+expect-block 235 76 -83 15 10
+fixture-permission member 10
