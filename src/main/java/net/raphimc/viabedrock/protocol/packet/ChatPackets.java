@@ -264,6 +264,12 @@ public final class ChatPackets {
                 create(Types.UNSIGNED_BYTE, (short) TextPacketType.chat.getValue()); // type
                 handler(wrapper -> wrapper.write(BedrockTypes.STRING, wrapper.user().get(EntityTracker.class).getClientPlayer().name())); // source name
                 map(Types.STRING, BedrockTypes.STRING); // message
+                handler(wrapper -> {
+                    final String message = wrapper.get(BedrockTypes.STRING, 1);
+                    if (Boolean.getBoolean("viabedrock.traceInventory") && message.matches("CAP(?:[0-9]+|BEGIN|END)")) {
+                        ViaBedrock.getPlatform().getLogger().info("INVENTORY_MARK time=" + System.nanoTime() + " marker=" + message);
+                    }
+                });
                 handler(wrapper -> wrapper.write(BedrockTypes.STRING, wrapper.user().get(AuthData.class).getXuid())); // xuid
                 create(BedrockTypes.STRING, ""); // platform online id
                 create(BedrockTypes.OPTIONAL_STRING, null); // filtered message

@@ -7,7 +7,7 @@ JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home ./gradlew 
 <java21>/bin/java -cp 'testclient/build/classes/java/main:testclient/build/dependencies/*' JavaPlayClient 25570 u1u1u1u1u1 testclient/scenarios/login.txt
 ```
 
-The client connects only to loopback and rejects the production proxy port 25568. The proxy must target the disposable copy at `192.168.11.12:19150`. Never run these scenarios against production.
+The client connects only to loopback and rejects the production proxy port 25568. The proxy must target the disposable copy at `100.80.152.112:19150`. Never run these scenarios against production.
 
 Commands are read from a file, or from standard input when the third argument is `-`:
 

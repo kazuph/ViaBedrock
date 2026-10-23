@@ -18,14 +18,11 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.Serv
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -54,9 +51,15 @@ public final class JavaPlayClient extends SessionAdapter {
                 session.send(new ServerboundResourcePackPacket(pack.getId(), ResourcePackStatus.ACCEPTED));
                 Path downloaded = Files.createTempFile("viabedrock-java26-pack-", ".zip");
                 try {
-                    var response = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(pack.getUrl()))
-                        .timeout(Duration.ofSeconds(60)).build(), HttpResponse.BodyHandlers.ofFile(downloaded));
-                    if (response.statusCode() != 200) throw new IllegalStateException("Pack HTTP " + response.statusCode());
+                    HttpURLConnection response = (HttpURLConnection) URI.create(pack.getUrl()).toURL().openConnection();
+                    response.setConnectTimeout(60_000);
+                    response.setReadTimeout(60_000);
+                    try {
+                        if (response.getResponseCode() != 200) throw new IllegalStateException("Pack HTTP " + response.getResponseCode());
+                        try (var in = response.getInputStream()) { Files.copy(in, downloaded, java.nio.file.StandardCopyOption.REPLACE_EXISTING); }
+                    } finally { response.disconnect(); }
+                    log("pack_download", Map.of("bytes", Files.size(downloaded),
+                        "prefix", HexFormat.of().formatHex(Arrays.copyOf(Files.readAllBytes(downloaded), 16))));
                     String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(Files.readAllBytes(downloaded)));
                     if (!pack.getHash().isEmpty() && !hash.equalsIgnoreCase(pack.getHash())) throw new IllegalStateException("Pack hash mismatch");
                     int entries = 0;
