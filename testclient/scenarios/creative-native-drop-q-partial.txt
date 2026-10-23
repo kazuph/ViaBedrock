@@ -1,7 +1,7 @@
 # Exact CAP16/CAP17 order: slot=-1 with item, then original slot with its remainder.
 expect-spawn 30
 fixture-reset
-fixture 239.5 76 -81.5 30
+fixture 235.5 76 -84.5 30
 fixture-hotbar 0 stone 64
 expect 0 36 1 64 10
 count-server stone 64
@@ -10,12 +10,14 @@ expect-chat VB-drop-setup 10
 mark-item-spawns native-drop
 mark-cursor-updates
 native-drop 36 1 1 63
+fixture 244.5 76 -84.5 30
 expect-ack -1 0 10
 expect-item-spawns native-drop 1 1 1 10
 chat VB-drop-complete
 expect-chat VB-drop-complete 10
 count-server stone 63
 expect 0 36 1 63 10
+expect-live-item-spawns native-drop 1 1 1 10
 expect-no-cursor-updates
 close 0
 snapshot

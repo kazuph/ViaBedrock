@@ -58,6 +58,7 @@ public final class ItemStackRequestTracker extends StoredObject {
     private final Deque<Runnable> waitingForInventory = new ArrayDeque<>();
     private boolean inventoryOpenRequested;
     private boolean nativeCreativeCursor;
+    private Item pendingCreativeDrop;
     private int dragWindow = -1;
     private int dragMode = -1;
     private final Set<Slot> dragSlots = new LinkedHashSet<>();
@@ -84,7 +85,7 @@ public final class ItemStackRequestTracker extends StoredObject {
     }
 
     public boolean hasQueuedInventoryActions() {
-        return this.inventoryOpenRequested || !this.waitingForInventory.isEmpty();
+        return this.inventoryOpenRequested || !this.waitingForInventory.isEmpty() || this.pendingCreativeDrop != null;
     }
 
     public CreativeInventory creative() {
@@ -154,6 +155,7 @@ public final class ItemStackRequestTracker extends StoredObject {
     }
 
     public void close(final int window) {
+        this.endCreativeTick();
         final InventoryTracker inventory = this.user().get(InventoryTracker.class);
         final Container container = inventory.getCurrentContainer();
         if (container == null) {
@@ -188,6 +190,28 @@ public final class ItemStackRequestTracker extends StoredObject {
         if ((javaSlot != -1 && destination == null) || requested.amount() < 0 || requested.amount() > 0xFF) {
             this.unsupported("Invalid creative slot or count");
             return;
+        }
+        if (javaSlot == -1) {
+            this.endCreativeTick();
+            if (!requested.isEmpty()) {
+                this.pendingCreativeDrop = requested.copy();
+            }
+            return;
+        }
+        if (this.pendingCreativeDrop != null) {
+            final Item dropped = this.pendingCreativeDrop;
+            final BedrockItem before = this.projected(destination);
+            final ItemRewriter items = this.user().get(ItemRewriter.class);
+            final boolean sameSource = !before.isEmpty() && this.creative.sameItem(items.javaItem(before.copy()), dropped);
+            final boolean sameRemainder = requested.isEmpty() || this.creative.sameItem(items.javaItem(before.copy()), requested);
+            if (sameSource && sameRemainder && before.amount() - requested.amount() == dropped.amount()) {
+                this.pendingCreativeDrop = null;
+                final InventoryClickPlan<Slot> plan = new InventoryClickPlan<>(this::projected, this::capacity);
+                plan.drop(destination, dropped.amount());
+                this.submitPlan(plan);
+                return;
+            }
+            this.endCreativeTick();
         }
         if (destination != null) {
             final InventoryTracker inventory = this.user().get(InventoryTracker.class);
@@ -229,6 +253,16 @@ public final class ItemStackRequestTracker extends StoredObject {
             }
         }
         this.applyCreativeChange(destination, requested, Set.of());
+    }
+
+    public void endCreativeTick() {
+        // Native inventory Q emits -1 plus a changed source slot synchronously.
+        // A lone -1 at the game's tick boundary is a catalog drop, not a removal.
+        if (this.pendingCreativeDrop != null) {
+            final Item dropped = this.pendingCreativeDrop;
+            this.pendingCreativeDrop = null;
+            this.applyCreativeChange(null, dropped, Set.of());
+        }
     }
 
     private void destroyCreativeCursor() {
@@ -296,6 +330,7 @@ public final class ItemStackRequestTracker extends StoredObject {
     }
 
     public void click(final int window, final int index, final int button, final ContainerInput action) {
+        this.endCreativeTick();
         this.nativeCreativeCursor = false;
         if (window == 0) {
             this.withInventory(() -> this.applyClick(window, index, button, action));

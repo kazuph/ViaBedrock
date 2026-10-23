@@ -87,6 +87,7 @@ public final class JavaPlayClient extends SessionAdapter {
     private final List<String> chat = new ArrayList<>();
     private final List<Process> consoleCommands = new ArrayList<>();
     private final Set<Integer> itemEntities = new HashSet<>();
+    private final Set<Integer> removedEntities = new HashSet<>();
     private final Map<Integer, ItemStack> droppedItems = new HashMap<>();
     private final Map<String, Set<Integer>> spawnMarkers = new HashMap<>();
     private final Set<ChunkPosition> loadedChunks = new HashSet<>();
@@ -202,6 +203,12 @@ public final class JavaPlayClient extends SessionAdapter {
                         }
                     }
                 }
+            } else if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundRemoveEntitiesPacket removal) {
+                synchronized (changed) {
+                    for (int id : removal.getEntityIds()) removedEntities.add(id);
+                    log("entity_removed", removal);
+                    changed.notifyAll();
+                }
             } else if (packet instanceof ClientboundAddEntityPacket entity) {
                 synchronized (changed) {
                     entities.add(entity.getType());
@@ -265,7 +272,7 @@ public final class JavaPlayClient extends SessionAdapter {
             case "mark-item-spawns" -> {
                 synchronized (changed) { spawnMarkers.put(args[1], Set.copyOf(itemEntities)); }
             }
-            case "expect-item-spawns" -> {
+            case "expect-item-spawns", "expect-live-item-spawns" -> {
                 int expectedEntities = Integer.parseInt(args[2]), id = Integer.parseInt(args[3]), expectedCount = Integer.parseInt(args[4]);
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[5]));
                 synchronized (changed) {
@@ -273,6 +280,7 @@ public final class JavaPlayClient extends SessionAdapter {
                     while (true) {
                         Set<Integer> added = new HashSet<>(itemEntities);
                         added.removeAll(spawnMarkers.get(args[1]));
+                        if (args[0].equals("expect-live-item-spawns")) added.removeAll(removedEntities);
                         int count = 0;
                         for (int entityId : added) {
                             ItemStack item = droppedItems.get(entityId);
