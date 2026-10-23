@@ -1,0 +1,16 @@
+fixture 239.5 76 -81.5 30
+chat VBREG-deletion-barrier
+expect-chat VBREG-deletion-barrier 10
+mark-item-spawns deletion
+creative 34 1 5
+expect-ack -1 0 10
+creative 34 0 0
+expect-ack -3 0 10
+chat VBREG-deletion-complete
+expect-chat VBREG-deletion-complete 10
+expect-item-spawns deletion 0 0 0 10
+mark-item-spawns dropping
+creative -1 1 3
+expect-ack -5 0 10
+expect-item-spawns dropping 1 1 3 10
+snapshot

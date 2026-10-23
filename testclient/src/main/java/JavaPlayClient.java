@@ -83,6 +83,9 @@ public final class JavaPlayClient extends SessionAdapter {
     private final Set<EntityType> entities = new HashSet<>();
     private final List<String> chat = new ArrayList<>();
     private final List<Process> consoleCommands = new ArrayList<>();
+    private final Set<Integer> itemEntities = new HashSet<>();
+    private final Map<Integer, ItemStack> droppedItems = new HashMap<>();
+    private final Map<String, Set<Integer>> spawnMarkers = new HashMap<>();
 
     private synchronized void log(String event, Object data) {
         System.out.println(json.toJson(Map.of("time", System.nanoTime(), "event", event, "data", data)));
@@ -178,12 +181,21 @@ public final class JavaPlayClient extends SessionAdapter {
                 }
             } else if (packet instanceof ClientboundSetEntityDataPacket metadata) {
                 for (var entry : metadata.getMetadata()) {
-                    if (entry.getValue() instanceof ItemStack item) log("item_entity_stack", Map.of("entityId", metadata.getEntityId(), "item", item));
+                    if (entry.getValue() instanceof ItemStack item) {
+                        synchronized (changed) {
+                            if (itemEntities.contains(metadata.getEntityId())) droppedItems.put(metadata.getEntityId(), item);
+                            log("item_entity_stack", Map.of("entityId", metadata.getEntityId(), "item", item));
+                            changed.notifyAll();
+                        }
+                    }
                 }
             } else if (packet instanceof ClientboundAddEntityPacket entity) {
                 synchronized (changed) {
                     entities.add(entity.getType());
-                    if (entity.getType() == EntityType.ITEM) log("item_entity_spawn", entity);
+                    if (entity.getType() == EntityType.ITEM) {
+                        itemEntities.add(entity.getEntityId());
+                        log("item_entity_spawn", entity);
+                    }
                     if (entity.getType() == EntityType.CAT) log("cat_spawn", entity);
                     changed.notifyAll();
                 }
@@ -225,6 +237,34 @@ public final class JavaPlayClient extends SessionAdapter {
         log("command", command);
         String[] args = command.split(" ");
         switch (args[0]) {
+            case "mark-item-spawns" -> {
+                synchronized (changed) { spawnMarkers.put(args[1], Set.copyOf(itemEntities)); }
+            }
+            case "expect-item-spawns" -> {
+                int expectedEntities = Integer.parseInt(args[2]), id = Integer.parseInt(args[3]), expectedCount = Integer.parseInt(args[4]);
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[5]));
+                synchronized (changed) {
+                    if (!spawnMarkers.containsKey(args[1])) throw new IllegalArgumentException("No spawn marker: " + args[1]);
+                    while (true) {
+                        Set<Integer> added = new HashSet<>(itemEntities);
+                        added.removeAll(spawnMarkers.get(args[1]));
+                        int count = 0;
+                        for (int entityId : added) {
+                            ItemStack item = droppedItems.get(entityId);
+                            if (item != null) {
+                                if (item.getId() != id) throw new AssertionError("Unexpected dropped item: " + item);
+                                count += item.getAmount();
+                            }
+                        }
+                        if (added.size() > expectedEntities || count > expectedCount) throw new AssertionError("Unexpected dropped item entities: " + added.size() + "; count=" + count);
+                        if (added.size() == expectedEntities && count == expectedCount) break;
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("Unmet: " + command + "; entities=" + added.size() + "; count=" + count);
+                        TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                    }
+                }
+                log("PASS", command);
+            }
             case "chat" -> session.send(new ServerboundChatPacket(command.substring(5), System.currentTimeMillis(), 0L, null, 0, new BitSet(20), 0));
             case "expect-chat", "expect-entity" -> {
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[2]));
