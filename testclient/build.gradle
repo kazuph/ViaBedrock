@@ -1,0 +1,16 @@
+plugins {
+    id 'application'
+}
+repositories {
+    mavenCentral()
+    maven { url = 'https://repo.opencollab.dev/main/' }
+}
+dependencies {
+    implementation 'org.geysermc.mcprotocollib:protocol:26.3'
+}
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+application.mainClass = 'JavaPlayClient'
+tasks.register('copyDependencies', Copy) {
+    from configurations.runtimeClasspath
+    into layout.buildDirectory.dir('dependencies')
+}

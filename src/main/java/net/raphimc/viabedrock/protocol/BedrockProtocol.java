@@ -162,6 +162,19 @@ public class BedrockProtocol extends StatelessTransitionProtocol<ClientboundBedr
 
     @Override
     public void transform(final Direction direction, final State state, final PacketWrapper wrapper) throws InformativeException, CancelException {
+        if (Boolean.getBoolean("viabedrock.traceInventory")) {
+            final String name = direction == Direction.CLIENTBOUND
+                ? String.valueOf(ClientboundBedrockPackets.getPacket(wrapper.getId()))
+                : state == State.PLAY && wrapper.getId() >= 0 && wrapper.getId() < ServerboundPackets26_3.values().length
+                    ? ServerboundPackets26_3.values()[wrapper.getId()].name() : "";
+            if (name.equals("START_GAME") || name.equals("CREATIVE_CONTENT") || name.equals("ITEM_STACK_RESPONSE")
+                || name.startsWith("INVENTORY_") || name.startsWith("CONTAINER_") || name.equals("PLAYER_HOTBAR")
+                || name.equals("SET_CREATIVE_MODE_SLOT") || name.equals("SET_CARRIED_ITEM") || name.equals("PLAYER_ACTION")) {
+                final ByteBuf input = ((PacketWrapperImpl) wrapper).getInputBuffer();
+                ViaBedrock.getPlatform().getLogger().info("INVENTORY_TRACE time=" + System.nanoTime() + " connection=" + wrapper.user().getId()
+                    + " direction=" + direction + " packet=" + name + " payload=" + (input == null ? "" : ByteBufUtil.hexDump(input)));
+            }
+        }
         if (direction == Direction.CLIENTBOUND) {
             State serverState = wrapper.user().getProtocolInfo().getServerState();
             final ClientboundBedrockPackets packet = ClientboundBedrockPackets.getPacket(wrapper.getId());
