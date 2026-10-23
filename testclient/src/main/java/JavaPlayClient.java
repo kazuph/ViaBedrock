@@ -313,8 +313,11 @@ public final class JavaPlayClient extends SessionAdapter {
             }
             case "count-server" -> {
                 if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log").contains(args[1])) throw new IllegalArgumentException(command);
-                String marker = "VB-count-" + UUID.randomUUID();
-                Process logs = new ProcessBuilder("ssh", "pc", "docker logs --follow --since 1s minecraft-edu-test").redirectErrorStream(true).start();
+                Process fence = new ProcessBuilder("ssh", "pc", "docker logs --timestamps --tail 1 minecraft-edu-test").redirectErrorStream(true).start();
+                String lastLine = new String(fence.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).strip();
+                if (!fence.waitFor(30, TimeUnit.SECONDS) || fence.exitValue() != 0 || lastLine.isEmpty()) throw new IllegalStateException("No copy-server log watermark");
+                String timestamp = lastLine.substring(0, lastLine.indexOf(' '));
+                Process logs = new ProcessBuilder("ssh", "pc", "docker logs --timestamps --follow --since " + timestamp + " minecraft-edu-test").redirectErrorStream(true).start();
                 try {
                     CompletableFuture<Integer> result = CompletableFuture.supplyAsync(() -> {
                         try (var reader = new BufferedReader(new InputStreamReader(logs.getInputStream()))) {
@@ -322,8 +325,10 @@ public final class JavaPlayClient extends SessionAdapter {
                             String line;
                             while ((line = reader.readLine()) != null) {
                                 log("server_count_log", line);
-                                if (line.contains(marker)) marked = true;
-                                if (!marked) continue;
+                                if (!marked) {
+                                    if (line.equals(lastLine)) marked = true;
+                                    continue;
+                                }
                                 var count = java.util.regex.Pattern.compile("ViaJavaTest has (\\d+) items that match the criteria").matcher(line);
                                 if (count.find()) return Integer.parseInt(count.group(1));
                                 if (line.contains("Could not clear the inventory of ViaJavaTest, no items to remove")) return 0;
@@ -331,7 +336,6 @@ public final class JavaPlayClient extends SessionAdapter {
                             throw new IllegalStateException("Server log ended before item count");
                         } catch (Exception error) { throw new java.util.concurrent.CompletionException(error); }
                     });
-                    copyConsole("say " + marker);
                     copyConsole("clear ViaJavaTest " + args[1] + " 0 0");
                     int actual = result.get(30, TimeUnit.SECONDS);
                     if (actual != Integer.parseInt(args[2])) throw new AssertionError(command + "; actual=" + actual);
