@@ -72,6 +72,8 @@ public final class JavaPlayClient extends SessionAdapter {
     private float playerYaw, playerPitch;
     private int blockSequence;
     private int abilitiesRevision;
+    private int openWindow = -1;
+    private String openMenu;
     private boolean permissionChanged;
     private final Map<Vector3i, Integer> blocks = new HashMap<>();
 
@@ -173,7 +175,14 @@ public final class JavaPlayClient extends SessionAdapter {
                 }
             } else if (packet instanceof ClientboundAddEntityPacket entity && entity.getType() == EntityType.ITEM) {
                 log("item_entity_spawn", entity);
-            } else if (packet.getClass().getSimpleName().contains("Cursor") || packet instanceof ClientboundOpenScreenPacket) {
+            } else if (packet instanceof ClientboundOpenScreenPacket open) {
+                synchronized (changed) {
+                    openWindow = open.getContainerId();
+                    openMenu = open.getType().toString();
+                    log("open_screen", open);
+                    changed.notifyAll();
+                }
+            } else if (packet.getClass().getSimpleName().contains("Cursor")) {
                 log(packet.getClass().getSimpleName(), packet);
             }
         } catch (Exception failure) {
@@ -198,6 +207,33 @@ public final class JavaPlayClient extends SessionAdapter {
         log("command", command);
         String[] args = command.split(" ");
         switch (args[0]) {
+            case "fixture-slot", "fixture-hotbar" -> {
+                int slot = Integer.parseInt(args[1]), count = Integer.parseInt(args[3]);
+                boolean hotbar = args[0].equals("fixture-hotbar");
+                if (!username.equals("ViaJavaTest") || slot < 0 || slot >= (hotbar ? 9 : 27) || !Set.of("stone", "glass", "air").contains(args[2]) || count < 0 || count > 64) throw new IllegalArgumentException(command);
+                copyConsole("replaceitem entity ViaJavaTest slot." + (hotbar ? "hotbar" : "inventory") + " " + slot + " " + args[2] + " " + count);
+            }
+            case "fixture-chest" -> {
+                if (!username.equals("ViaJavaTest") || !Set.of("normal", "full").contains(args[1])) throw new IllegalArgumentException(command);
+                for (int i = 0; i < 27; i++) {
+                    String item = args[1].equals("full") || i < 4 ? "stone" : i == 4 ? "diamond_sword" : i == 5 ? "oak_planks" : "air";
+                    int count = args[1].equals("full") ? i == 0 ? 60 : 64 : i < 4 ? 32 : i == 5 ? 64 : 1;
+                    copyConsole("replaceitem block 240 76 -80 slot.container " + i + " " + item + " " + count);
+                }
+            }
+            case "expect-menu" -> {
+                int slots = Integer.parseInt(args[1]);
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[2]));
+                synchronized (changed) {
+                    while (openWindow == -1 || !containers.containsKey(openWindow) || containers.get(openWindow).length != slots + 36) {
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("Menu not received: " + command + "; window=" + openWindow + "; type=" + openMenu);
+                        TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                    }
+                    if (!openMenu.equals(slots == 27 ? "GENERIC_9X3" : "GENERIC_9X6")) throw new AssertionError("Incorrect Java menu: " + openMenu);
+                }
+                log("PASS", command);
+            }
             case "fixture-permission" -> {
                 if (!username.equals("ViaJavaTest") || !Set.of("visitor", "member").contains(args[1])) throw new IllegalArgumentException(command);
                 int before;
@@ -341,7 +377,7 @@ public final class JavaPlayClient extends SessionAdapter {
                 log("PASS", command);
             }
             case "click" -> {
-                int window = Integer.parseInt(args[1]), slot = Integer.parseInt(args[2]);
+                int window = window(args[1]), slot = Integer.parseInt(args[2]);
                 ContainerActionType type = ContainerActionType.values()[Integer.parseInt(args[3])];
                 session.send(new ServerboundContainerClickPacket(window, revision, slot, type,
                     type == ContainerActionType.DROP_ITEM ? DropItemAction.from(Integer.parseInt(args[4]))
@@ -350,9 +386,12 @@ public final class JavaPlayClient extends SessionAdapter {
             case "select" -> session.send(new ServerboundSetCarriedItemPacket(Integer.parseInt(args[1])));
             case "drop-selected" -> session.send(new ServerboundPlayerActionPacket(
                 args[1].equals("all") ? PlayerAction.DROP_ITEM_STACK : PlayerAction.DROP_ITEM, Vector3i.ZERO, Direction.DOWN, 0));
-            case "close" -> session.send(new ServerboundContainerClosePacket(Integer.parseInt(args[1])));
+            case "close" -> {
+                session.send(new ServerboundContainerClosePacket(window(args[1])));
+                synchronized (changed) { openWindow = -1; }
+            }
             case "expect" -> {
-                int window = Integer.parseInt(args[1]), slot = Integer.parseInt(args[2]), id = Integer.parseInt(args[3]), count = Integer.parseInt(args[4]);
+                int window = window(args[1]), slot = Integer.parseInt(args[2]), id = Integer.parseInt(args[3]), count = Integer.parseInt(args[4]);
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[5]));
                 synchronized (changed) {
                     while (true) {
@@ -384,8 +423,20 @@ public final class JavaPlayClient extends SessionAdapter {
         } finally { buffer.release(); }
     }
 
+    private int window(String value) {
+        if (!value.equals("open")) return Integer.parseInt(value);
+        synchronized (changed) {
+            if (openWindow == -1) throw new IllegalStateException("No received open menu");
+            return openWindow;
+        }
+    }
+
     private static void setFixturePermission(String permission) throws Exception {
-        Process console = new ProcessBuilder("ssh", "pc", "docker exec minecraft-edu-test send-command 'permission set ViaJavaTest " + permission + "'").inheritIO().start();
+        copyConsole("permission set ViaJavaTest " + permission);
+    }
+
+    private static void copyConsole(String command) throws Exception {
+        Process console = new ProcessBuilder("ssh", "pc", "docker exec minecraft-edu-test send-command '" + command + "'").inheritIO().start();
         if (!console.waitFor(30, TimeUnit.SECONDS) || console.exitValue() != 0) throw new IllegalStateException("Copy-server permission command failed");
     }
 

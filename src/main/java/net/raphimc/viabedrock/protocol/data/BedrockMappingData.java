@@ -122,6 +122,7 @@ public class BedrockMappingData extends MappingDataBase {
     private Map<String, Map<BlockState, JavaItemMapping>> bedrockToJavaBlockItems;
     private Map<String, Map<Integer, JavaItemMapping>> bedrockToJavaMetaItems;
     private Map<ContainerType, Integer> bedrockToJavaContainers;
+    private List<String> javaMenus;
 
     // Entities
     private BiMap<String, Integer> bedrockEntities;
@@ -570,7 +571,7 @@ public class BedrockMappingData extends MappingDataBase {
             }
 
             final JsonArray javaMenusJson = javaViaMappingJson.get("menus").getAsJsonArray();
-            final List<String> javaMenus = new ArrayList<>(javaMenusJson.size());
+            final List<String> javaMenus = this.javaMenus = new ArrayList<>(javaMenusJson.size());
             for (JsonElement menuJson : javaMenusJson) {
                 javaMenus.add(Key.namespaced(menuJson.getAsString()));
             }
@@ -1182,6 +1183,14 @@ public class BedrockMappingData extends MappingDataBase {
 
     public Map<ContainerType, Integer> getBedrockToJavaContainers() {
         return this.bedrockToJavaContainers;
+    }
+
+    public int getJavaMenuId(final String name) {
+        final int id = this.javaMenus.indexOf(name);
+        if (id == -1) {
+            throw new IllegalArgumentException("Unknown Java menu: " + name);
+        }
+        return id;
     }
 
     public BiMap<String, Integer> getBedrockEntities() {

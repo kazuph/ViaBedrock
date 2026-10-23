@@ -143,7 +143,6 @@ public final class InventoryPackets {
                 title = TextUtil.stringToTextComponent(wrapper.user().get(ResourcePackStorage.class).getTexts().translate(customNameTag.getValue()));
             }
 
-            final Container container;
             switch (type) {
                 case INVENTORY -> {
                     inventoryTracker.setCurrentContainer(new InventoryContainer(wrapper.user(), containerId, position, inventoryTracker.getInventoryContainer()));
@@ -151,7 +150,11 @@ public final class InventoryPackets {
                     wrapper.cancel();
                     return;
                 }
-                case CONTAINER -> container = new ChestContainer(wrapper.user(), containerId, title, position, 27);
+                case CONTAINER -> {
+                    inventoryTracker.setCurrentContainer(new ChestContainer(wrapper.user(), containerId, title, position));
+                    wrapper.cancel();
+                    return;
+                }
                 case NONE, CAULDRON, JUKEBOX, ARMOR, HAND, HUD, DECORATED_POT -> { // Bedrock client can't open these containers
                     wrapper.cancel();
                     return;
@@ -164,11 +167,6 @@ public final class InventoryPackets {
                     return;
                 }
             }
-            inventoryTracker.setCurrentContainer(container);
-
-            wrapper.write(Types.VAR_INT, (int) containerId); // container id
-            wrapper.write(Types.VAR_INT, BedrockProtocol.MAPPINGS.getBedrockToJavaContainers().get(type)); // type
-            wrapper.write(Types.TAG, TextUtil.textComponentToNbt(title)); // title
         });
         protocol.registerClientbound(ClientboundBedrockPackets.CONTAINER_CLOSE, ClientboundPackets26_3.CONTAINER_CLOSE, new PacketHandlers() {
             @Override
@@ -205,9 +203,25 @@ public final class InventoryPackets {
 
             final InventoryTracker inventoryTracker = wrapper.user().get(InventoryTracker.class);
             final Container container = inventoryTracker.getContainerClientbound((byte) containerId, containerName, storageItem);
+            final boolean openingChest = container instanceof ChestContainer && container.size() == 0;
             if (container != null && container.setItems(items)) {
-                PacketFactory.writeJavaContainerSetContent(wrapper, container);
+                if (openingChest) {
+                    final ChestContainer chest = (ChestContainer) container;
+                    final PacketWrapper open = PacketWrapper.create(ClientboundPackets26_3.OPEN_SCREEN, wrapper.user());
+                    open.write(Types.VAR_INT, (int) chest.javaContainerId());
+                    open.write(Types.VAR_INT, BedrockProtocol.MAPPINGS.getJavaMenuId(chest.javaMenuName()));
+                    open.write(Types.TAG, TextUtil.textComponentToNbt(chest.title()));
+                    open.send(BedrockProtocol.class);
+                }
+                final Container current = inventoryTracker.getCurrentContainer();
+                PacketFactory.writeJavaContainerSetContent(wrapper, container == inventoryTracker.getInventoryContainer()
+                    && current instanceof ChestContainer && current.size() != 0 ? current : container);
             } else {
+                if (openingChest) {
+                    ViaBedrock.getPlatform().getLogger().warning("Unsupported chest size: " + items.length);
+                    inventoryTracker.markPendingClose(container);
+                    PacketFactory.sendBedrockContainerClose(wrapper.user(), container.containerId(), ContainerType.NONE);
+                }
                 wrapper.cancel();
             }
         });
@@ -222,6 +236,12 @@ public final class InventoryPackets {
             final InventoryTracker inventoryTracker = wrapper.user().get(InventoryTracker.class);
             final Container container = inventoryTracker.getContainerClientbound((byte) containerId, containerName, storageItem);
             if (container != null && container.setItem(slot, item)) {
+                final Container current = inventoryTracker.getCurrentContainer();
+                if (container == inventoryTracker.getInventoryContainer() && current instanceof ChestContainer && current.size() != 0) {
+                    wrapper.setPacketType(ClientboundPackets26_3.CONTAINER_SET_CONTENT);
+                    PacketFactory.writeJavaContainerSetContent(wrapper, current);
+                    return;
+                }
                 if (container.type() == ContainerType.HUD && slot == 0) { // cursor item
                     wrapper.setPacketType(ClientboundPackets26_3.SET_CURSOR_ITEM);
                 } else {

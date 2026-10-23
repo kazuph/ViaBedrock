@@ -600,7 +600,7 @@ public final class ItemStackRequestTracker extends StoredObject {
         final InventoryTracker inventory = this.user().get(InventoryTracker.class);
         PacketFactory.sendJavaContainerSetContent(this.user(), inventory.getInventoryContainer());
         final Container open = inventory.getCurrentContainer();
-        if (open != null && open != inventory.getInventoryContainer() && open.type() != ContainerType.INVENTORY) {
+        if (open != null && open.size() != 0 && open != inventory.getInventoryContainer() && open.type() != ContainerType.INVENTORY) {
             PacketFactory.sendJavaContainerSetContent(this.user(), open);
         }
     }

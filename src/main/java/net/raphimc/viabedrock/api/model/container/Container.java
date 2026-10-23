@@ -39,7 +39,7 @@ public abstract class Container {
     protected final ContainerType type;
     protected final TextComponent title;
     protected final BlockPosition position;
-    protected final BedrockItem[] items;
+    protected BedrockItem[] items;
     protected final Set<String> validBlockTags;
 
     public Container(final UserConnection user, final byte containerId, final ContainerType type, final TextComponent title, final BlockPosition position, final int size, final String... validBlockTags) {

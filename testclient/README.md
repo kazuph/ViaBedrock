@@ -23,6 +23,9 @@ Commands are read from a file, or from standard input when the third argument is
 - `dig START_DIGGING|CANCEL_DIGGING|FINISH_DIGGING <x> <y> <z> <face>`: send the actual Java block action and sequence number.
 - `use-on <x> <y> <z> <face> <hit-x> <hit-y> <hit-z>`: send a main-hand block interaction.
 - `expect-block <x> <y> <z> <java-block-state> <timeout-seconds>`: compare a received block update; independently verify world changes with the copy server console.
+- `expect-menu <27|54> <timeout-seconds>`: verify the real menu type and chest plus 36 player slots. Use `open` as the window argument to `click`, `expect`, or `close` for its received ID.
+- `fixture-slot <inventory-index> <stone|glass|air> <count>` / `fixture-hotbar <hotbar-index> <stone|glass|air> <count>`: replace only the automatic test player slot through the copy-server console. Await the received slot with `expect` before using it.
+- `fixture-chest full|normal`: fill the authorized normal test chest, or restore its documented initial contents through real server commands.
 - `expect-cursor <item-id> <count> <timeout-seconds>`: compare the actual received cursor.
 - `expect <window> <slot> <java-item-id> <count> <timeout-seconds>`: await server-supplied state and fail with nonzero exit if the condition is unmet.
 - `expect-spawn <timeout-seconds>`: wait for the server's spawn completion game event before testing world interactions such as dropping.
