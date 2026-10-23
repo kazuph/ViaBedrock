@@ -17,6 +17,9 @@ Commands are read from a file, or from standard input when the third argument is
 - `creative-book <slot> <enchantment-resource-name> <level> <item-id>`: create a book with stored enchantments, resolving the enchantment ID from the received registry.
 - `click <window> <slot> <mode> <button>`: send an actual container click using the codec's seven action modes.
 - `close <window>`: close a window.
+- `select <hotbar-slot>` / `drop-selected one|all`: select a hotbar slot and send the real world Q / Ctrl+Q player action.
+- `fixture <x> <y> <z> <timeout-seconds>`: after actual spawn, teleport only `ViaJavaTest` using the authorized SSH copy-server console, then await its received position.
+- `expect-cursor <item-id> <count> <timeout-seconds>`: compare the actual received cursor.
 - `expect <window> <slot> <java-item-id> <count> <timeout-seconds>`: await server-supplied state and fail with nonzero exit if the condition is unmet.
 - `expect-spawn <timeout-seconds>`: wait for the server's spawn completion game event before testing world interactions such as dropping.
 - `expect-ack <request-id> <result-code> <timeout-seconds>`: verify an actual Bedrock response in the development proxy trace log supplied as the optional fourth argument. Only newly appended log content is inspected.

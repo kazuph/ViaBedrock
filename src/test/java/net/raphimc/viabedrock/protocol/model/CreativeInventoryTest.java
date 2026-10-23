@@ -19,8 +19,23 @@ import static org.junit.Assert.*;
 public class CreativeInventoryTest {
 
     @Test
+    public void explicitVanillaDefaultDamageMatchesButChangedDamageDoesNot() {
+        final CreativeInventory inventory = new CreativeInventory(Map.of(1050, 0));
+        inventory.add(11, new BedrockItem(300), new StructuredItem(1050, 1));
+        final Item undamaged = new StructuredItem(1050, 1, new StructuredDataContainer(Map.of(
+            StructuredDataKey.DAMAGE, StructuredData.of(StructuredDataKey.DAMAGE, 0, 3))));
+        assertNotNull(inventory.match(undamaged));
+        final Item damaged = new StructuredItem(1050, 1, new StructuredDataContainer(Map.of(
+            StructuredDataKey.DAMAGE, StructuredData.of(StructuredDataKey.DAMAGE, 7, 3))));
+        assertNull(inventory.match(damaged));
+        final CreativeInventory noDefault = new CreativeInventory(Map.of());
+        noDefault.add(11, new BedrockItem(300), new StructuredItem(1050, 1));
+        assertNull(noDefault.match(undamaged));
+    }
+
+    @Test
     public void countCanChangeButComponentsMustMatch() {
-        final CreativeInventory inventory = new CreativeInventory();
+        final CreativeInventory inventory = new CreativeInventory(Map.of(1050, 0));
         final Item damaged = new StructuredItem(1050, 1, new StructuredDataContainer(Map.of(
             StructuredDataKey.DAMAGE, StructuredData.of(StructuredDataKey.DAMAGE, 7, 3))));
         inventory.add(11, new BedrockItem(300), damaged);
@@ -34,7 +49,7 @@ public class CreativeInventoryTest {
 
     @Test
     public void aliasedJavaItemsDoNotSelectTheWrongBedrockVariant() {
-        final CreativeInventory inventory = new CreativeInventory();
+        final CreativeInventory inventory = new CreativeInventory(Map.of(1050, 0));
         final Item java = new StructuredItem(1, 1);
         final BedrockItem first = new BedrockItem(5);
         first.setBlockRuntimeId(100);

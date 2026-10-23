@@ -50,6 +50,8 @@ import net.raphimc.viabedrock.protocol.rewriter.InventoryTransactionRewriter;
 import net.raphimc.viabedrock.protocol.storage.ChunkTracker;
 import net.raphimc.viabedrock.protocol.storage.EntityTracker;
 import net.raphimc.viabedrock.protocol.storage.InventoryTracker;
+import net.raphimc.viabedrock.protocol.storage.ItemStackRequestTracker;
+import net.raphimc.viabedrock.protocol.storage.GameSessionStorage;
 import net.raphimc.viabedrock.protocol.types.BedrockTypes;
 
 import java.util.List;
@@ -82,6 +84,11 @@ public final class InteractionPackets {
 
         if (action != PlayerActionAction.DROP_ITEM && action != PlayerActionAction.DROP_ALL_ITEMS) {
             return false;
+        }
+
+        if (wrapper.user().get(GameSessionStorage.class).isInventoryServerAuthoritative()) {
+            wrapper.user().get(ItemStackRequestTracker.class).dropSelected(action == PlayerActionAction.DROP_ALL_ITEMS);
+            return true;
         }
 
         final BedrockItem currentItem = inventory.getSelectedHotbarItem();

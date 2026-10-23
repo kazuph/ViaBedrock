@@ -112,6 +112,9 @@ public class BedrockMappingData extends MappingDataBase {
     // Items
     private ItemUpgrader bedrockItemUpgrader;
     private BiMap<String, Integer> javaItems;
+    private Int2IntMap javaItemStackLimits;
+    private Map<Integer, Integer> javaItemDefaultDamage;
+    private Map<Integer, String> javaItemEquipmentSlots;
     private Set<String> bedrockBlockItems;
     private Set<String> bedrockMetaItems;
     private Map<String, Set<String>> bedrockItemTags;
@@ -408,6 +411,19 @@ public class BedrockMappingData extends MappingDataBase {
             this.javaItems = HashBiMap.create(javaItemsJson.size());
             for (int i = 0; i < javaItemsJson.size(); i++) {
                 this.javaItems.put(Key.namespaced(javaItemsJson.get(i).getAsString()), i);
+            }
+            final JsonObject stackLimits = this.readJson("java/item_stack_limits.json");
+            this.javaItemStackLimits = new Int2IntOpenHashMap(this.javaItems.size());
+            for (Map.Entry<String, Integer> item : this.javaItems.entrySet()) {
+                this.javaItemStackLimits.put(item.getValue().intValue(), stackLimits.get(item.getKey()).getAsInt());
+            }
+            this.javaItemDefaultDamage = new HashMap<>();
+            for (Map.Entry<String, JsonElement> item : this.readJson("java/item_default_damage.json").entrySet()) {
+                this.javaItemDefaultDamage.put(this.javaItems.get(item.getKey()), item.getValue().getAsInt());
+            }
+            this.javaItemEquipmentSlots = new HashMap<>();
+            for (Map.Entry<String, JsonElement> item : this.readJson("java/item_equipment_slots.json").entrySet()) {
+                this.javaItemEquipmentSlots.put(this.javaItems.get(item.getKey()), item.getValue().getAsString());
             }
 
             final JsonArray bedrockItemsJson = this.readJson("bedrock/runtime_item_states.json", JsonArray.class);
@@ -1123,6 +1139,21 @@ public class BedrockMappingData extends MappingDataBase {
 
     public BiMap<String, Integer> getJavaItems() {
         return this.javaItems;
+    }
+
+    public int getJavaItemStackLimit(final int itemId) {
+        if (!this.javaItemStackLimits.containsKey(itemId)) {
+            throw new IllegalArgumentException("Unknown Java item stack limit: " + itemId);
+        }
+        return this.javaItemStackLimits.get(itemId);
+    }
+
+    public Map<Integer, Integer> getJavaItemDefaultDamage() {
+        return this.javaItemDefaultDamage;
+    }
+
+    public String getJavaItemEquipmentSlot(final int itemId) {
+        return this.javaItemEquipmentSlots.get(itemId);
     }
 
     public Set<String> getBedrockBlockItems() {

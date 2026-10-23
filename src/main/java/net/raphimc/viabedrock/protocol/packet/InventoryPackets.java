@@ -190,6 +190,7 @@ public final class InventoryPackets {
                         wrapper.cancel();
                         return;
                     }
+                    wrapper.set(Types.VAR_INT, 0, (int) container.javaContainerId());
                     inventoryTracker.setCurrentContainerClosed(serverInitiated);
                     wrapper.user().get(ItemStackRequestTracker.class).closed();
                 });
@@ -438,6 +439,10 @@ public final class InventoryPackets {
             final byte button = wrapper.read(Types.BYTE); // button
             final ContainerInput action = ContainerInput.values()[wrapper.read(Types.VAR_INT)]; // action
 
+            if (wrapper.user().get(GameSessionStorage.class).isInventoryServerAuthoritative()) {
+                wrapper.user().get(ItemStackRequestTracker.class).click(containerId, slot, button, action);
+                return;
+            }
             final InventoryTracker inventoryTracker = wrapper.user().get(InventoryTracker.class);
             if (inventoryTracker.getPendingCloseContainer() != null) {
                 wrapper.cancel();
@@ -543,6 +548,11 @@ public final class InventoryPackets {
                 handler(wrapper -> {
                     final InventoryTracker inventoryTracker = wrapper.user().get(InventoryTracker.class);
                     final byte containerId = wrapper.get(Types.BYTE, 0);
+                    if (wrapper.user().get(GameSessionStorage.class).isInventoryServerAuthoritative()) {
+                        wrapper.cancel();
+                        wrapper.user().get(ItemStackRequestTracker.class).close(containerId);
+                        return;
+                    }
                     final Container container = inventoryTracker.getContainerServerbound(containerId);
                     if (container == null) {
                         wrapper.cancel();

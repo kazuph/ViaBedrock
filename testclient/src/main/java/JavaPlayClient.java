@@ -8,6 +8,13 @@ import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.MinecraftProtocol;
 import org.geysermc.mcprotocollib.protocol.data.game.ResourcePackStatus;
 import org.geysermc.mcprotocollib.protocol.data.game.inventory.ContainerActionType;
+import org.geysermc.mcprotocollib.protocol.data.game.inventory.DropItemAction;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PlayerAction;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction;
+import org.cloudburstmc.math.vector.Vector3i;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundPlayerActionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundSetCarriedItemPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.item.ItemStack;
 import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponents;
 import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponentTypes;
@@ -56,6 +63,9 @@ public final class JavaPlayClient extends SessionAdapter {
     private ItemStack cursor;
     private int revision;
     private boolean closed;
+    private String username;
+    private double playerX, playerY, playerZ;
+    private float playerYaw, playerPitch;
 
     private synchronized void log(String event, Object data) {
         System.out.println(json.toJson(Map.of("time", System.nanoTime(), "event", event, "data", data)));
@@ -98,11 +108,17 @@ public final class JavaPlayClient extends SessionAdapter {
                 } finally { Files.deleteIfExists(downloaded); }
             } else if (packet instanceof ClientboundPlayerPositionPacket position) {
                 log("position", position);
-                session.send(new ServerboundAcceptTeleportationPacket(position.getId(), position.getPosition().getX(), position.getPosition().getY(),
-                    position.getPosition().getZ(), position.getYRot(), position.getXRot()));
+                synchronized (changed) {
+                    playerX = position.getPosition().getX() + (position.getRelatives().contains(PositionElement.X) ? playerX : 0);
+                    playerY = position.getPosition().getY() + (position.getRelatives().contains(PositionElement.Y) ? playerY : 0);
+                    playerZ = position.getPosition().getZ() + (position.getRelatives().contains(PositionElement.Z) ? playerZ : 0);
+                    playerYaw = position.getYRot() + (position.getRelatives().contains(PositionElement.Y_ROT) ? playerYaw : 0);
+                    playerPitch = position.getXRot() + (position.getRelatives().contains(PositionElement.X_ROT) ? playerPitch : 0);
+                    changed.notifyAll();
+                }
+                session.send(new ServerboundAcceptTeleportationPacket(position.getId(), playerX, playerY, playerZ, playerYaw, playerPitch));
                 if (position.getId() >= 0) {
-                    session.send(new ServerboundMovePlayerPosRotPacket(false, false, position.getPosition().getX(), position.getPosition().getY(),
-                        position.getPosition().getZ(), position.getYRot(), position.getXRot()));
+                    session.send(new ServerboundMovePlayerPosRotPacket(false, false, playerX, playerY, playerZ, playerYaw, playerPitch));
                 }
                 if (!ready.isDone()) session.send(ServerboundPlayerLoadedPacket.INSTANCE);
                 ready.complete(null);
@@ -123,6 +139,12 @@ public final class JavaPlayClient extends SessionAdapter {
                     if (items != null && slot.getSlot() >= 0 && slot.getSlot() < items.length) items[slot.getSlot()] = slot.getItem();
                     revision = slot.getStateId();
                     log("slot", slot);
+                    changed.notifyAll();
+                }
+            } else if (packet instanceof ClientboundSetCursorItemPacket carried) {
+                synchronized (changed) {
+                    cursor = carried.getContents();
+                    log("cursor", String.valueOf(cursor));
                     changed.notifyAll();
                 }
             } else if (packet instanceof ClientboundSetEntityDataPacket metadata) {
@@ -156,6 +178,38 @@ public final class JavaPlayClient extends SessionAdapter {
         log("command", command);
         String[] args = command.split(" ");
         switch (args[0]) {
+            case "fixture" -> {
+                if (!username.equals("ViaJavaTest")) throw new IllegalStateException("Fixture teleport is restricted to ViaJavaTest");
+                double x = Double.parseDouble(args[1]), y = Double.parseDouble(args[2]), z = Double.parseDouble(args[3]);
+                long timeout = Long.parseLong(args[4]);
+                spawned.get(timeout, TimeUnit.SECONDS);
+                Process console = new ProcessBuilder("ssh", "pc", "docker exec minecraft-edu-test send-command 'tp ViaJavaTest " + x + " " + y + " " + z + "'")
+                    .inheritIO().start();
+                if (!console.waitFor(timeout, TimeUnit.SECONDS) || console.exitValue() != 0) throw new IllegalStateException("Copy-server fixture teleport failed");
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeout);
+                synchronized (changed) {
+                    while (Math.abs(playerX - x) > Math.ulp((float) x) || Math.abs(playerY - y) > Math.ulp((float) y)
+                        || Math.abs(playerZ - z) > Math.ulp((float) z)) {
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("Fixture teleport not confirmed: " + playerX + "," + playerY + "," + playerZ);
+                        TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                    }
+                }
+                log("PASS", command);
+            }
+            case "expect-cursor" -> {
+                int id = Integer.parseInt(args[1]), count = Integer.parseInt(args[2]);
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[3]));
+                synchronized (changed) {
+                    while (!(count == 0 ? cursor == null || cursor.getAmount() == 0
+                        : cursor != null && cursor.getId() == id && cursor.getAmount() == count)) {
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("Unmet: " + command + "; actual=" + cursor);
+                        TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                    }
+                }
+                log("PASS", command);
+            }
             case "save-inventory" -> {
                 synchronized (changed) { Files.write(Path.of(args[1]), inventoryBytes()); }
                 log("saved_inventory", args[1]);
@@ -236,8 +290,12 @@ public final class JavaPlayClient extends SessionAdapter {
                 int window = Integer.parseInt(args[1]), slot = Integer.parseInt(args[2]);
                 ContainerActionType type = ContainerActionType.values()[Integer.parseInt(args[3])];
                 session.send(new ServerboundContainerClickPacket(window, revision, slot, type,
-                    type.actionFrom(Integer.parseInt(args[4]), slot), null, Map.of()));
+                    type == ContainerActionType.DROP_ITEM ? DropItemAction.from(Integer.parseInt(args[4]))
+                        : type.actionFrom(Integer.parseInt(args[4]), slot), null, Map.of()));
             }
+            case "select" -> session.send(new ServerboundSetCarriedItemPacket(Integer.parseInt(args[1])));
+            case "drop-selected" -> session.send(new ServerboundPlayerActionPacket(
+                args[1].equals("all") ? PlayerAction.DROP_ITEM_STACK : PlayerAction.DROP_ITEM, Vector3i.ZERO, Direction.DOWN, 0));
             case "close" -> session.send(new ServerboundContainerClosePacket(Integer.parseInt(args[1])));
             case "expect" -> {
                 int window = Integer.parseInt(args[1]), slot = Integer.parseInt(args[2]), id = Integer.parseInt(args[3]), count = Integer.parseInt(args[4]);
@@ -277,6 +335,7 @@ public final class JavaPlayClient extends SessionAdapter {
         int port = Integer.parseInt(args[0]);
         if (port == 25568) throw new IllegalArgumentException("Production proxy is forbidden");
         JavaPlayClient client = new JavaPlayClient();
+        client.username = args[1];
         if (args.length == 4) {
             client.responseLog = Path.of(args[3]).toAbsolutePath();
             client.responseLogOffset = Math.toIntExact(Files.size(client.responseLog));

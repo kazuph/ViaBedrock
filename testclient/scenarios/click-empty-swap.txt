@@ -1,0 +1,11 @@
+fixture 235.5 76 -84.5 30
+expect 0 16 1084 1 30
+click 0 16 2 6
+expect-ack -1 0 10
+expect 0 42 1084 1 10
+expect 0 16 0 0 10
+click 0 16 2 6
+expect-ack -3 0 10
+expect 0 16 1084 1 10
+expect 0 42 0 0 10
+snapshot
