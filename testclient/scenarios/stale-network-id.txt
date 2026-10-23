@@ -1,0 +1,26 @@
+# Admin clear deliberately races a real menu operation; the test requires server rejection, never a local substitute.
+fixture 239.5 76 -81.5 30
+fixture-hotbar 2 stone 60
+fixture-slot 11 stone 32
+fixture-slot 12 air 1
+fixture-slot 17 glass 7
+expect 0 26 231 7 10
+use-on 242 76 -80 UP 0.5 1 0.5
+expect-menu 54 10
+expect open 0 1 16 10
+expect open 30 231 20 10
+expect open 71 231 7 10
+fixture-clear-race glass 200
+click open 30 1 0
+click open 71 1 0
+click open 0 1 0
+expect-ack -1 50 10
+expect-ack -5 0 10
+expect-no-request -3
+expect open 30 231 20 10
+expect open 1 0 0 10
+expect open 71 0 0 10
+expect open 0 0 0 10
+expect open 65 1 44 10
+expect open 83 1 64 10
+snapshot

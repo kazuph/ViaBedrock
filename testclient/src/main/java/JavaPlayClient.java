@@ -35,6 +35,8 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.Clien
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.*;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.ServerboundPlayerLoadedPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.ServerboundClientTickEndPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.ServerboundChatPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundSystemChatPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.*;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundPlayerInputPacket;
@@ -78,6 +80,9 @@ public final class JavaPlayClient extends SessionAdapter {
     private boolean permissionChanged;
     private long clientTick;
     private final Map<Vector3i, Integer> blocks = new HashMap<>();
+    private final Set<EntityType> entities = new HashSet<>();
+    private final List<String> chat = new ArrayList<>();
+    private final List<Process> consoleCommands = new ArrayList<>();
 
     private synchronized void log(String event, Object data) {
         System.out.println(json.toJson(Map.of("time", System.nanoTime(), "event", event, "data", data)));
@@ -175,8 +180,19 @@ public final class JavaPlayClient extends SessionAdapter {
                 for (var entry : metadata.getMetadata()) {
                     if (entry.getValue() instanceof ItemStack item) log("item_entity_stack", Map.of("entityId", metadata.getEntityId(), "item", item));
                 }
-            } else if (packet instanceof ClientboundAddEntityPacket entity && entity.getType() == EntityType.ITEM) {
-                log("item_entity_spawn", entity);
+            } else if (packet instanceof ClientboundAddEntityPacket entity) {
+                synchronized (changed) {
+                    entities.add(entity.getType());
+                    if (entity.getType() == EntityType.ITEM) log("item_entity_spawn", entity);
+                    if (entity.getType() == EntityType.CAT) log("cat_spawn", entity);
+                    changed.notifyAll();
+                }
+            } else if (packet instanceof ClientboundSystemChatPacket message) {
+                synchronized (changed) {
+                    chat.add(message.getContent().toString());
+                    log("chat", message);
+                    changed.notifyAll();
+                }
             } else if (packet instanceof ClientboundOpenScreenPacket open) {
                 synchronized (changed) {
                     openWindow = open.getContainerId();
@@ -209,6 +225,36 @@ public final class JavaPlayClient extends SessionAdapter {
         log("command", command);
         String[] args = command.split(" ");
         switch (args[0]) {
+            case "chat" -> session.send(new ServerboundChatPacket(command.substring(5), System.currentTimeMillis(), 0L, null, 0, new BitSet(20), 0));
+            case "expect-chat", "expect-entity" -> {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[2]));
+                synchronized (changed) {
+                    while (args[0].equals("expect-chat") ? chat.stream().noneMatch(text -> text.contains(args[1])) : !entities.contains(EntityType.valueOf(args[1]))) {
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("Unmet: " + command);
+                        TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                    }
+                }
+                log("PASS", command);
+            }
+            case "fixture-clear" -> {
+                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass").contains(args[1])) throw new IllegalArgumentException(command);
+                copyConsole("clear ViaJavaTest " + args[1]);
+            }
+            case "fixture-clear-race" -> {
+                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass").contains(args[1])) throw new IllegalArgumentException(command);
+                long delay = Long.parseLong(args[2]);
+                if (delay < 0) throw new IllegalArgumentException(command);
+                consoleCommands.add(new ProcessBuilder("ssh", "pc", "docker exec minecraft-edu-test send-command 'clear ViaJavaTest " + args[1] + "'").inheritIO().start());
+                CompletableFuture.runAsync(() -> {}, CompletableFuture.delayedExecutor(delay, TimeUnit.MILLISECONDS)).get(30, TimeUnit.SECONDS);
+            }
+            case "expect-no-request" -> {
+                if (responseLog == null) throw new IllegalStateException("Development proxy trace log is required");
+                byte[] bytes = Files.readAllBytes(responseLog);
+                String received = new String(bytes, responseLogOffset, bytes.length - responseLogOffset, java.nio.charset.StandardCharsets.UTF_8);
+                if (received.contains("request=ItemStackRequest[id=" + Integer.parseInt(args[1]) + ",")) throw new AssertionError("Dependent request reached server: " + command);
+                log("PASS", command);
+            }
             case "walk" -> {
                 double startX, startZ, y;
                 synchronized (changed) { startX = playerX; startZ = playerZ; y = playerY; }
@@ -498,9 +544,15 @@ public final class JavaPlayClient extends SessionAdapter {
                 }
             }
         } finally {
-            if (client.permissionChanged) setFixturePermission("member");
-            ticks.shutdownNow();
-            session.disconnect("Test finished");
+            try {
+                for (Process console : client.consoleCommands) {
+                    if (!console.waitFor(30, TimeUnit.SECONDS) || console.exitValue() != 0) throw new IllegalStateException("Fixture console command failed");
+                }
+                if (client.permissionChanged) setFixturePermission("member");
+            } finally {
+                ticks.shutdownNow();
+                session.disconnect("Test finished");
+            }
         }
     }
 }
