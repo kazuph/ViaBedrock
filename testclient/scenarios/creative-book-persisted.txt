@@ -1,0 +1,5 @@
+expect 0 9 1395 1 30
+expect-book 9 minecraft:protection 1 10
+expect 0 10 1395 1 10
+expect-book 10 minecraft:protection 2 10
+snapshot

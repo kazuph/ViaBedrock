@@ -45,6 +45,8 @@ public class InventoryRequestStateTest {
         final InventoryRequestState<String> state = new InventoryRequestState<>(confirmed::get, confirmed::put);
         final var first = state.submit(Map.of("slot", stack(32, 10)), Set.of());
         final var next = state.submit(Map.of("slot", stack(16, 10)), Set.of());
+        assertEquals(-1, first.id());
+        assertEquals(-3, next.id());
         assertEquals(first.id(), state.takeReady().requests().get(0).id());
         assertTrue(state.takeReady().requests().isEmpty());
         assertTrue(state.complete(first.id(), Map.of("slot", stack(32, 11))));
@@ -78,6 +80,17 @@ public class InventoryRequestStateTest {
         assertEquals(31, confirmed.get("slot").amount());
         assertEquals(Integer.valueOf(12), confirmed.get("slot").netId());
         assertFalse(state.complete(request.id(), Map.of("slot", stack(99, 0))));
+    }
+
+    @Test
+    public void aLaterWriteDoesNotOvertakeAnEarlierReadOfTheSameSlot() {
+        final Map<String, BedrockItem> confirmed = new HashMap<>(Map.of("source", stack(64, 10), "destination", BedrockItem.empty()));
+        final InventoryRequestState<String> state = new InventoryRequestState<>(confirmed::get, confirmed::put);
+        final var clone = state.submit(Map.of("destination", stack(64, 0)), Set.of("source"));
+        final var drop = state.submit(Map.of("source", stack(63, 10)), Set.of());
+        assertTrue(drop.dependencies().contains(clone.id()));
+        assertEquals(clone.id(), state.takeReady().requests().get(0).id());
+        assertTrue(state.takeReady().requests().isEmpty());
     }
 
 }

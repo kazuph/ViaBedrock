@@ -53,13 +53,16 @@ public final class InventoryRequestState<K> {
         }
         final Set<Integer> dependencies = new HashSet<>();
         for (Request<K> earlier : this.pending.values()) {
-            if (earlier.after.keySet().stream().anyMatch(touched::contains)) {
+            if (earlier.after.keySet().stream().anyMatch(touched::contains)
+                || after.keySet().stream().anyMatch(earlier.before::containsKey)) {
                 dependencies.add(earlier.id);
             }
         }
         final Map<K, BedrockItem> copiedAfter = new LinkedHashMap<>();
         after.forEach((slot, item) -> copiedAfter.put(slot, item.copy()));
-        final int id = this.nextId--;
+        // Bedrock client request identifiers are negative odd values; even values belong to legacy requests.
+        final int id = this.nextId;
+        this.nextId -= 2;
         if (id >= 0) {
             throw new IllegalStateException("Inventory request identifiers exhausted");
         }

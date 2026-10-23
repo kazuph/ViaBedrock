@@ -1,0 +1,7 @@
+expect 0 37 1 64 30
+expect 0 38 1050 1 10
+expect 0 39 0 0 10
+expect 0 40 0 0 10
+expect 0 41 1050 1 10
+expect 0 42 1 64 10
+snapshot

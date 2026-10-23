@@ -26,7 +26,8 @@ public final class ItemStackRequestType extends Type<ItemStackRequest> {
         BedrockTypes.VAR_INT.write(buffer, request.id());
         BedrockTypes.UNSIGNED_VAR_INT.write(buffer, request.actions().size());
         for (ItemStackRequest.Action action : request.actions()) {
-            BedrockTypes.UNSIGNED_VAR_INT.write(buffer, action.type().getValue());
+            // The union omits deprecated action kinds 7/8; CraftCreative's tag is 12, its const action type is 14.
+            BedrockTypes.UNSIGNED_VAR_INT.write(buffer, action instanceof ItemStackRequest.CraftCreative ? 12 : action.type().getValue());
             // Protocol 2193 uses both an action type and a union discriminator.
             buffer.writeByte(action.type().getValue());
             if (action instanceof ItemStackRequest.Transfer transfer) {

@@ -1,0 +1,9 @@
+expect-spawn 30
+expect 0 9 0 0 30
+creative-book 9 minecraft:protection 1 1395
+expect-ack -1 0 10
+expect 0 9 1395 1 10
+creative-book 10 minecraft:protection 2 1395
+expect-ack -3 0 10
+expect 0 10 1395 1 10
+snapshot

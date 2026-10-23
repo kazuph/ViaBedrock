@@ -24,7 +24,7 @@ public class ItemStackProtocolTest {
                 new ItemStackRequest.Transfer(ItemStackRequestActionType.Place, 64,
                     new ItemStackRequest.Slot(new FullContainerName(ContainerEnumName.CreatedOutputContainer, null), 50, -1),
                     new ItemStackRequest.Slot(new FullContainerName(ContainerEnumName.CombinedHotbarAndInventoryContainer, null), 1, 0)))));
-            assertEquals("01020e0e01400101403c0032ffffffff0c00010000000000ffffffff", ByteBufUtil.hexDump(bytes));
+            assertEquals("01020c0e01400101403c0032ffffffff0c00010000000000ffffffff", ByteBufUtil.hexDump(bytes));
         } finally {
             bytes.release();
         }
