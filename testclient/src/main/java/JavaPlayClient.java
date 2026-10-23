@@ -314,7 +314,7 @@ public final class JavaPlayClient extends SessionAdapter {
             case "count-server" -> {
                 if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log").contains(args[1])) throw new IllegalArgumentException(command);
                 Process fence = new ProcessBuilder("ssh", "pc", "docker logs --timestamps --tail 1 minecraft-edu-test").redirectErrorStream(true).start();
-                String lastLine = new String(fence.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).strip();
+                String lastLine = new String(fence.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).replaceFirst("[\\r\\n]+$", "");
                 if (!fence.waitFor(30, TimeUnit.SECONDS) || fence.exitValue() != 0 || lastLine.isEmpty()) throw new IllegalStateException("No copy-server log watermark");
                 String timestamp = lastLine.substring(0, lastLine.indexOf(' '));
                 Process logs = new ProcessBuilder("ssh", "pc", "docker logs --timestamps --follow --since " + timestamp + " minecraft-edu-test").redirectErrorStream(true).start();
@@ -341,6 +341,10 @@ public final class JavaPlayClient extends SessionAdapter {
                     if (actual != Integer.parseInt(args[2])) throw new AssertionError(command + "; actual=" + actual);
                     log("PASS", command);
                 } finally { logs.destroy(); }
+            }
+            case "fixture-reset" -> {
+                if (!username.equals("ViaJavaTest")) throw new IllegalArgumentException(command);
+                copyConsole("clear ViaJavaTest");
             }
             case "fixture-clear" -> {
                 if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log").contains(args[1])) throw new IllegalArgumentException(command);
@@ -388,7 +392,7 @@ public final class JavaPlayClient extends SessionAdapter {
             case "fixture-slot", "fixture-hotbar" -> {
                 int slot = Integer.parseInt(args[1]), count = Integer.parseInt(args[3]);
                 boolean hotbar = args[0].equals("fixture-hotbar");
-                if (!username.equals("ViaJavaTest") || slot < 0 || slot >= (hotbar ? 9 : 27) || !Set.of("stone", "glass", "oak_planks", "oak_log", "air").contains(args[2]) || count < 0 || count > 64) throw new IllegalArgumentException(command);
+                if (!username.equals("ViaJavaTest") || slot < 0 || slot >= (hotbar ? 9 : 27) || !Set.of("stone", "glass", "oak_planks", "oak_log", "diamond_sword", "air").contains(args[2]) || count < 0 || count > 64) throw new IllegalArgumentException(command);
                 copyConsole("replaceitem entity ViaJavaTest slot." + (hotbar ? "hotbar" : "inventory") + " " + slot + " " + args[2] + " " + count);
             }
             case "fixture-chest" -> {
