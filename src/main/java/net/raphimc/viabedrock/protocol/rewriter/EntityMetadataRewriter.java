@@ -32,6 +32,7 @@ import net.raphimc.viabedrock.api.model.entity.LivingEntity;
 import net.raphimc.viabedrock.api.model.entity.properties.EntityProperty;
 import net.raphimc.viabedrock.api.model.entity.properties.EntityPropertyList;
 import net.raphimc.viabedrock.protocol.BedrockProtocol;
+import net.raphimc.viabedrock.protocol.data.generated.java.RegistryKeys;
 import net.raphimc.viabedrock.protocol.data.enums.bedrock.ActorDataIds;
 import net.raphimc.viabedrock.protocol.data.enums.bedrock.ActorFlags;
 import net.raphimc.viabedrock.protocol.data.generated.java.EntityDataFields;
@@ -337,9 +338,33 @@ public final class EntityMetadataRewriter {
                         final int javaVariant = variant;
                         javaEntityData.add(new EntityData(entity.getJavaEntityDataIndex(EntityDataFields.VARIANT), VersionedTypes.V26_3.entityDataTypes().varIntType, javaVariant));
                     }
-                    case CAT -> { // TODO: Test when I can
-                        final int javaVariant = variant;
-                        javaEntityData.add(new EntityData(entity.getJavaEntityDataIndex(EntityDataFields.VARIANT), VersionedTypes.V26_3.entityDataTypes().varIntType, javaVariant));
+                    case CAT -> {
+                        final String javaVariantName = switch (variant) {
+                            case 0 -> "minecraft:white";
+                            case 1 -> "minecraft:black"; // Tuxedo
+                            case 2 -> "minecraft:red";
+                            case 3 -> "minecraft:siamese";
+                            case 4 -> "minecraft:british_shorthair";
+                            case 5 -> "minecraft:calico";
+                            case 6 -> "minecraft:persian";
+                            case 7 -> "minecraft:ragdoll";
+                            case 8 -> "minecraft:tabby";
+                            case 9 -> "minecraft:all_black";
+                            case 10 -> "minecraft:jellie";
+                            default -> {
+                                ViaBedrock.getPlatform().getLogger().warning("Unknown cat variant " + variant + ", defaulting to TABBY.");
+                                yield "minecraft:tabby";
+                            }
+                        };
+                        final CompoundTag catVariantRegistry = BedrockProtocol.MAPPINGS.getJavaRegistries().getCompoundTag(RegistryKeys.CAT_VARIANT);
+                        int javaVariant = 0;
+                        for (String key : catVariantRegistry.keySet()) {
+                            if (key.equals(javaVariantName)) {
+                                javaEntityData.add(new EntityData(entity.getJavaEntityDataIndex(EntityDataFields.VARIANT), VersionedTypes.V26_3.entityDataTypes().catVariantType, javaVariant));
+                                break;
+                            }
+                            javaVariant++;
+                        }
                     }
                     default -> {
                         if (variant != 0) { // For some reason bedrock seems to send variant 0 for many entities that don't have variants
