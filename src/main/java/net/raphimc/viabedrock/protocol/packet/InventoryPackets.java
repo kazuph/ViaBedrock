@@ -75,6 +75,7 @@ import net.raphimc.viabedrock.protocol.rewriter.BlockStateRewriter;
 import net.raphimc.viabedrock.protocol.rewriter.ItemRewriter;
 import net.raphimc.viabedrock.protocol.storage.*;
 import net.raphimc.viabedrock.protocol.types.BedrockTypes;
+import net.raphimc.viabedrock.protocol.types.inventory.ItemStackResponseType;
 
 import java.util.ArrayList;
 import java.util.logging.Level;
@@ -86,6 +87,14 @@ public final class InventoryPackets {
     private static final String DIALOG_FAKE_BUTTON_TEXT = "This is not actually a button, but has to be one because dialogs don't support adding text only elements. Clicking it has the same effect as closing the dialog.";
 
     public static void register(final BedrockProtocol protocol) {
+        protocol.registerClientbound(ClientboundBedrockPackets.ITEM_STACK_RESPONSE, null, wrapper -> {
+            wrapper.cancel();
+            final var type = new ItemStackResponseType();
+            final int count = wrapper.read(BedrockTypes.UNSIGNED_VAR_INT);
+            for (int i = 0; i < count; i++) {
+                wrapper.user().get(ItemStackRequestTracker.class).response(wrapper.read(type));
+            }
+        });
         protocol.registerClientbound(ClientboundBedrockPackets.CONTAINER_OPEN, ClientboundPackets26_3.OPEN_SCREEN, wrapper -> {
             final ChunkTracker chunkTracker = wrapper.user().get(ChunkTracker.class);
             final BlockStateRewriter blockStateRewriter = wrapper.user().get(BlockStateRewriter.class);

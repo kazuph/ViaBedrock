@@ -24,7 +24,7 @@ public final class InventoryRequestState<K> {
     private final Map<K, Long> revisions = new HashMap<>();
     private final Map<Integer, Request<K>> pending = new LinkedHashMap<>();
     private final Map<Integer, Map<K, Long>> sent = new HashMap<>();
-    private int nextId = 1;
+    private int nextId = -1;
 
     public InventoryRequestState(final Function<K, BedrockItem> confirmed, final BiConsumer<K, BedrockItem> commit) {
         this.confirmed = confirmed;
@@ -59,8 +59,8 @@ public final class InventoryRequestState<K> {
         }
         final Map<K, BedrockItem> copiedAfter = new LinkedHashMap<>();
         after.forEach((slot, item) -> copiedAfter.put(slot, item.copy()));
-        final int id = this.nextId++;
-        if (id <= 0) {
+        final int id = this.nextId--;
+        if (id >= 0) {
             throw new IllegalStateException("Inventory request identifiers exhausted");
         }
         final Request<K> request = new Request<>(id, Map.copyOf(before), Map.copyOf(copiedAfter), Set.copyOf(dependencies));
