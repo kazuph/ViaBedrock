@@ -18,6 +18,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.Serv
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.Hand;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.item.ItemStack;
 import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponents;
 import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponentTypes;
@@ -86,6 +87,9 @@ public final class JavaPlayClient extends SessionAdapter {
     private final Set<Integer> itemEntities = new HashSet<>();
     private final Map<Integer, ItemStack> droppedItems = new HashMap<>();
     private final Map<String, Set<Integer>> spawnMarkers = new HashMap<>();
+    private final Set<ChunkPosition> loadedChunks = new HashSet<>();
+
+    private record ChunkPosition(int x, int z) {}
 
     private synchronized void log(String event, Object data) {
         System.out.println(json.toJson(Map.of("time", System.nanoTime(), "event", event, "data", data)));
@@ -142,6 +146,11 @@ public final class JavaPlayClient extends SessionAdapter {
                 }
                 if (!ready.isDone()) session.send(ServerboundPlayerLoadedPacket.INSTANCE);
                 ready.complete(null);
+            } else if (packet instanceof ClientboundLevelChunkWithLightPacket chunk) {
+                synchronized (changed) {
+                    loadedChunks.add(new ChunkPosition(chunk.getX(), chunk.getZ()));
+                    changed.notifyAll();
+                }
             } else if (packet instanceof ClientboundBlockUpdatePacket block) {
                 synchronized (changed) {
                     blocks.put(block.getEntry().getPosition(), block.getEntry().getBlock());
@@ -237,6 +246,18 @@ public final class JavaPlayClient extends SessionAdapter {
         log("command", command);
         String[] args = command.split(" ");
         switch (args[0]) {
+            case "expect-chunk" -> {
+                ChunkPosition position = new ChunkPosition(Integer.parseInt(args[1]), Integer.parseInt(args[2]));
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[3]));
+                synchronized (changed) {
+                    while (!loadedChunks.contains(position)) {
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("Chunk not received: " + command);
+                        TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                    }
+                }
+                log("PASS", command);
+            }
             case "mark-item-spawns" -> {
                 synchronized (changed) { spawnMarkers.put(args[1], Set.copyOf(itemEntities)); }
             }
