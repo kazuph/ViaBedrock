@@ -214,8 +214,14 @@ public final class InventoryPackets {
                     open.send(BedrockProtocol.class);
                 }
                 final Container current = inventoryTracker.getCurrentContainer();
-                PacketFactory.writeJavaContainerSetContent(wrapper, container == inventoryTracker.getInventoryContainer()
-                    && current instanceof ChestContainer && current.size() != 0 ? current : container);
+                final Container displayed = container == inventoryTracker.getInventoryContainer()
+                    && current instanceof ChestContainer && current.size() != 0 ? current : container;
+                if (wrapper.user().get(ItemStackRequestTracker.class).hasNativeCreativeCursor()) {
+                    wrapper.cancel();
+                    PacketFactory.sendJavaContainerSetContent(wrapper.user(), displayed);
+                } else {
+                    PacketFactory.writeJavaContainerSetContent(wrapper, displayed);
+                }
             } else {
                 if (openingChest) {
                     ViaBedrock.getPlatform().getLogger().warning("Unsupported chest size: " + items.length);
@@ -243,6 +249,10 @@ public final class InventoryPackets {
                     return;
                 }
                 if (container.type() == ContainerType.HUD && slot == 0) { // cursor item
+                    if (wrapper.user().get(ItemStackRequestTracker.class).hasNativeCreativeCursor()) {
+                        wrapper.cancel();
+                        return;
+                    }
                     wrapper.setPacketType(ClientboundPackets26_3.SET_CURSOR_ITEM);
                 } else {
                     wrapper.write(Types.VAR_INT, (int) container.javaContainerId()); // container id

@@ -57,6 +57,7 @@ public final class ItemStackRequestTracker extends StoredObject {
     private final CreativeInventory creative = new CreativeInventory(BedrockProtocol.MAPPINGS.getJavaItemDefaultDamage());
     private final Deque<Runnable> waitingForInventory = new ArrayDeque<>();
     private boolean inventoryOpenRequested;
+    private boolean nativeCreativeCursor;
     private int dragWindow = -1;
     private int dragMode = -1;
     private final Set<Slot> dragSlots = new LinkedHashSet<>();
@@ -104,7 +105,13 @@ public final class ItemStackRequestTracker extends StoredObject {
         return null;
     }
 
+    public boolean hasNativeCreativeCursor() {
+        return this.nativeCreativeCursor;
+    }
+
     public void creativeSlot(final int javaSlot, final Item requested) {
+        // The creative screen sends slot images, but never its locally carried stack.
+        this.nativeCreativeCursor = true;
         this.withInventory(() -> this.applyCreativeSlot(javaSlot, requested));
     }
 
@@ -141,6 +148,7 @@ public final class ItemStackRequestTracker extends StoredObject {
     }
 
     public void closed() {
+        this.nativeCreativeCursor = false;
         this.inventoryOpenRequested = false;
         this.openInventoryIfNeeded();
     }
@@ -160,6 +168,11 @@ public final class ItemStackRequestTracker extends StoredObject {
         }
         this.dragSlots.clear();
         this.dragWindow = -1;
+        if (this.nativeCreativeCursor && window == 0) {
+            // Clicking the creative trash slot sends nothing. Only close establishes
+            // that an unplaced carried stack has really left the native inventory.
+            this.destroyCreativeCursor();
+        }
         inventory.markPendingClose(container);
         final Runnable close = () -> PacketFactory.sendBedrockContainerClose(this.user(), container.containerId(), ContainerType.NONE);
         if (this.state.isPending()) {
@@ -170,12 +183,61 @@ public final class ItemStackRequestTracker extends StoredObject {
     }
 
     private void applyCreativeSlot(final int javaSlot, final Item requested) {
+        this.nativeCreativeCursor = true;
         final Slot destination = javaSlot == -1 ? null : this.javaInventorySlot(javaSlot);
         if ((javaSlot != -1 && destination == null) || requested.amount() < 0 || requested.amount() > 0xFF) {
             this.unsupported("Invalid creative slot or count");
             return;
         }
+        if (destination != null) {
+            final InventoryTracker inventory = this.user().get(InventoryTracker.class);
+            final Slot cursor = this.slot(inventory.getHudContainer(), 0);
+            final BedrockItem before = this.projected(destination);
+            final BedrockItem carried = this.projected(cursor);
+            final ItemRewriter items = this.user().get(ItemRewriter.class);
+            final boolean same = !before.isEmpty() && !requested.isEmpty()
+                && this.creative.sameItem(items.javaItem(before.copy()), requested);
+            final int remaining = requested.isEmpty() ? 0 : same ? requested.amount() : -1;
+            if (!before.isEmpty() && remaining >= 0 && remaining < before.amount()) {
+                if (!carried.isEmpty() && (carried.isDifferent(before)
+                    || carried.amount() + before.amount() - remaining > this.capacity(cursor, before))) {
+                    this.destroyCreativeCursor();
+                }
+                final InventoryClickPlan<Slot> plan = new InventoryClickPlan<>(this::projected, this::capacity);
+                plan.transfer(destination, cursor, before.amount() - remaining);
+                this.submitPlan(plan);
+                return;
+            }
+            if (!requested.isEmpty() && !carried.isEmpty()
+                && this.creative.sameItem(items.javaItem(carried.copy()), requested)) {
+                final InventoryClickPlan<Slot> plan = new InventoryClickPlan<>(this::projected, this::capacity);
+                if (before.isEmpty() || same) {
+                    plan.transfer(cursor, destination, requested.amount() - (same ? before.amount() : 0));
+                } else if (requested.amount() == carried.amount()) {
+                    plan.swap(cursor, destination);
+                } else {
+                    this.unsupported("Creative replacement does not match the carried stack");
+                    return;
+                }
+                if (!plan.operations().isEmpty()) {
+                    this.submitPlan(plan);
+                    final BedrockItem placed = this.projected(destination);
+                    if (placed.amount() == requested.amount()) {
+                        return;
+                    }
+                }
+            }
+        }
         this.applyCreativeChange(destination, requested, Set.of());
+    }
+
+    private void destroyCreativeCursor() {
+        final Slot cursor = this.slot(this.user().get(InventoryTracker.class).getHudContainer(), 0);
+        final BedrockItem carried = this.projected(cursor);
+        if (!carried.isEmpty()) {
+            this.submit(Map.of(cursor, BedrockItem.empty()), Set.of(),
+                id -> List.of(new ItemStackRequest.Destroy(carried.amount(), this.wireSlot(cursor))));
+        }
     }
 
     private void applyCreativeChange(final Slot destination, final Item requested, final Set<Slot> reads) {
@@ -234,6 +296,7 @@ public final class ItemStackRequestTracker extends StoredObject {
     }
 
     public void click(final int window, final int index, final int button, final ContainerInput action) {
+        this.nativeCreativeCursor = false;
         if (window == 0) {
             this.withInventory(() -> this.applyClick(window, index, button, action));
         } else {

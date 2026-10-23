@@ -5,6 +5,8 @@ fixture-hotbar 0 stone 64
 fixture-slot 1 air 1
 expect 0 36 1 64 10
 count-server stone 64
+chat VB-native-setup
+expect-chat VB-native-setup 10
 mark-cursor-updates
 creative 36 0 0
 expect-ack -1 0 10
