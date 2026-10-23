@@ -481,6 +481,9 @@ public final class ItemStackRequestTracker extends StoredObject {
                 packet.write(BedrockTypes.UNSIGNED_VAR_INT, 1);
                 packet.write(REQUEST_TYPE, wire);
                 packet.sendToServer(BedrockProtocol.class);
+                if (Boolean.getBoolean("viabedrock.measureInventory")) {
+                    ViaBedrock.getPlatform().getLogger().info("INVENTORY_TIMING time=" + System.nanoTime() + " requestId=" + request.id() + " sent=true");
+                }
                 if (Boolean.getBoolean("viabedrock.traceInventory")) {
                     ViaBedrock.getPlatform().getLogger().info("INVENTORY_REQUEST time=" + System.nanoTime() + " request=" + wire);
                 }
@@ -496,6 +499,9 @@ public final class ItemStackRequestTracker extends StoredObject {
     }
 
     public void response(final ItemStackResponse response) {
+        if (Boolean.getBoolean("viabedrock.measureInventory")) {
+            ViaBedrock.getPlatform().getLogger().info("INVENTORY_TIMING time=" + System.nanoTime() + " requestId=" + response.requestId() + " result=" + response.result());
+        }
         final var request = this.state.get(response.requestId());
         if (request == null) {
             ViaBedrock.getPlatform().getLogger().warning("Ignoring response for unknown item stack request " + response.requestId());

@@ -1,0 +1,13 @@
+# Same 18-block route on the authorized stone fixture, at 20 client ticks/second.
+fixture 235.5 76 -84.5 30
+walk 244.5 -84.5 60
+walk 235.5 -84.5 60
+creative 35 1 64
+expect-ack -1 0 10
+creative 35 1 63
+expect-ack -3 0 10
+creative 35 1 64
+expect-ack -5 0 10
+creative 35 0 0
+expect-ack -7 0 10
+expect 0 35 0 0 10

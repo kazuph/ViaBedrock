@@ -37,6 +37,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.Serverbound
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.ServerboundClientTickEndPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.*;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundPlayerInputPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
 
 import java.io.BufferedReader;
@@ -75,6 +76,7 @@ public final class JavaPlayClient extends SessionAdapter {
     private int openWindow = -1;
     private String openMenu;
     private boolean permissionChanged;
+    private long clientTick;
     private final Map<Vector3i, Integer> blocks = new HashMap<>();
 
     private synchronized void log(String event, Object data) {
@@ -207,6 +209,31 @@ public final class JavaPlayClient extends SessionAdapter {
         log("command", command);
         String[] args = command.split(" ");
         switch (args[0]) {
+            case "walk" -> {
+                double startX, startZ, y;
+                synchronized (changed) { startX = playerX; startZ = playerZ; y = playerY; }
+                double endX = Double.parseDouble(args[1]), endZ = Double.parseDouble(args[2]);
+                int duration = Integer.parseInt(args[3]);
+                if (duration <= 0) throw new IllegalArgumentException(command);
+                playerYaw = (float) Math.toDegrees(Math.atan2(startX - endX, endZ - startZ));
+                session.send(new ServerboundPlayerInputPacket(true, false, false, false, false, false, false));
+                for (int i = 1; i <= duration; i++) {
+                    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                    synchronized (changed) {
+                        long previous = clientTick;
+                        while (clientTick == previous) {
+                            long remaining = deadline - System.nanoTime();
+                            if (closed || remaining <= 0) throw new AssertionError("Client tick stopped");
+                            TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                        }
+                        playerX = startX + (endX - startX) * i / duration;
+                        playerZ = startZ + (endZ - startZ) * i / duration;
+                        session.send(new ServerboundMovePlayerPosRotPacket(true, false, playerX, y, playerZ, playerYaw, playerPitch));
+                    }
+                }
+                session.send(new ServerboundPlayerInputPacket(false, false, false, false, false, false, false));
+                log("PASS", command);
+            }
             case "fixture-slot", "fixture-hotbar" -> {
                 int slot = Integer.parseInt(args[1]), count = Integer.parseInt(args[3]);
                 boolean hotbar = args[0].equals("fixture-hotbar");
@@ -323,13 +350,14 @@ public final class JavaPlayClient extends SessionAdapter {
             case "expect-ack" -> {
                 if (responseLog == null) throw new IllegalStateException("The fourth argument must name the development proxy trace log");
                 String expected = "response=ItemStackResponse[result=" + Integer.parseInt(args[2]) + ", requestId=" + Integer.parseInt(args[1]) + ",";
+                String timing = " requestId=" + Integer.parseInt(args[1]) + " result=" + Integer.parseInt(args[2]);
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[3]));
                 try (var watcher = responseLog.getFileSystem().newWatchService()) {
                     responseLog.getParent().register(watcher, StandardWatchEventKinds.ENTRY_MODIFY);
                     while (true) {
                         byte[] bytes = Files.readAllBytes(responseLog);
                         String received = new String(bytes, responseLogOffset, bytes.length - responseLogOffset, java.nio.charset.StandardCharsets.UTF_8);
-                        if (received.contains(expected)) break;
+                        if (received.contains(expected) || received.contains(timing)) break;
                         long remaining = deadline - System.nanoTime();
                         if (remaining <= 0) throw new AssertionError("Server acknowledgement missing: " + expected);
                         var key = watcher.poll(remaining, TimeUnit.NANOSECONDS);
@@ -458,7 +486,10 @@ public final class JavaPlayClient extends SessionAdapter {
         try {
             client.ready.get(90, TimeUnit.SECONDS);
             // Match the ordinary Java client's 20 game ticks per second.
-            ticks.scheduleAtFixedRate(() -> session.send(ServerboundClientTickEndPacket.INSTANCE), 0, 50, TimeUnit.MILLISECONDS);
+            ticks.scheduleAtFixedRate(() -> {
+                session.send(ServerboundClientTickEndPacket.INSTANCE);
+                synchronized (client.changed) { client.clientTick++; client.changed.notifyAll(); }
+            }, 0, 50, TimeUnit.MILLISECONDS);
             client.log("ready", "MCProtocolLib 26.3");
             try (var input = args[2].equals("-") ? new BufferedReader(new InputStreamReader(System.in)) : Files.newBufferedReader(Path.of(args[2]))) {
                 String command;
