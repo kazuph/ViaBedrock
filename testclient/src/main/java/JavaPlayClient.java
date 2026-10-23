@@ -524,6 +524,15 @@ public final class JavaPlayClient extends SessionAdapter {
             case "snapshot" -> {
                 synchronized (changed) { log("snapshot", Map.of("containers", containers, "cursor", String.valueOf(cursor))); }
             }
+            case "native-drop" -> {
+                int slot = Integer.parseInt(args[1]), id = Integer.parseInt(args[2]);
+                int count = Integer.parseInt(args[3]), remaining = Integer.parseInt(args[4]);
+                // The official screen emits both slot images in one game-thread action.
+                synchronized (session) {
+                    session.send(new ServerboundSetCreativeModeSlotPacket((short) -1, new ItemStack(id, count)));
+                    session.send(new ServerboundSetCreativeModeSlotPacket((short) slot, remaining == 0 ? null : new ItemStack(id, remaining)));
+                }
+            }
             case "creative" -> session.send(new ServerboundSetCreativeModeSlotPacket(Short.parseShort(args[1]),
                 Integer.parseInt(args[3]) == 0 ? null : new ItemStack(Integer.parseInt(args[2]), Integer.parseInt(args[3]))));
             case "creative-damage" -> {
@@ -642,7 +651,7 @@ public final class JavaPlayClient extends SessionAdapter {
             client.ready.get(90, TimeUnit.SECONDS);
             // Match the ordinary Java client's 20 game ticks per second.
             ticks.scheduleAtFixedRate(() -> {
-                session.send(ServerboundClientTickEndPacket.INSTANCE);
+                synchronized (session) { session.send(ServerboundClientTickEndPacket.INSTANCE); }
                 synchronized (client.changed) { client.clientTick++; client.changed.notifyAll(); }
             }, 0, 50, TimeUnit.MILLISECONDS);
             client.log("ready", "MCProtocolLib 26.3");
