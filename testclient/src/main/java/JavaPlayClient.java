@@ -15,6 +15,9 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction;
 import org.cloudburstmc.math.vector.Vector3i;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundPlayerActionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundSetCarriedItemPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.player.Hand;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.data.game.item.ItemStack;
 import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponents;
 import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponentTypes;
@@ -66,6 +69,8 @@ public final class JavaPlayClient extends SessionAdapter {
     private String username;
     private double playerX, playerY, playerZ;
     private float playerYaw, playerPitch;
+    private int blockSequence;
+    private final Map<Vector3i, Integer> blocks = new HashMap<>();
 
     private synchronized void log(String event, Object data) {
         System.out.println(json.toJson(Map.of("time", System.nanoTime(), "event", event, "data", data)));
@@ -122,6 +127,12 @@ public final class JavaPlayClient extends SessionAdapter {
                 }
                 if (!ready.isDone()) session.send(ServerboundPlayerLoadedPacket.INSTANCE);
                 ready.complete(null);
+            } else if (packet instanceof ClientboundBlockUpdatePacket block) {
+                synchronized (changed) {
+                    blocks.put(block.getEntry().getPosition(), block.getEntry().getBlock());
+                    log("block_update", block);
+                    changed.notifyAll();
+                }
             } else if (packet instanceof ClientboundGameEventPacket event) {
                 log("game_event", event);
                 if (event.getNotification() == GameEvent.LEVEL_CHUNKS_LOAD_START) spawned.complete(null);
@@ -178,6 +189,21 @@ public final class JavaPlayClient extends SessionAdapter {
         log("command", command);
         String[] args = command.split(" ");
         switch (args[0]) {
+            case "use-on" -> session.send(new ServerboundUseItemOnPacket(Vector3i.from(Integer.parseInt(args[1]), Integer.parseInt(args[2]), Integer.parseInt(args[3])),
+                Direction.valueOf(args[4]), Hand.MAIN_HAND, Float.parseFloat(args[5]), Float.parseFloat(args[6]), Float.parseFloat(args[7]), false, false, ++blockSequence));
+            case "expect-block" -> {
+                Vector3i position = Vector3i.from(Integer.parseInt(args[1]), Integer.parseInt(args[2]), Integer.parseInt(args[3]));
+                int state = Integer.parseInt(args[4]);
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[5]));
+                synchronized (changed) {
+                    while (!Objects.equals(blocks.get(position), state)) {
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("Unmet: " + command + "; actual=" + blocks.get(position));
+                        TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                    }
+                }
+                log("PASS", command);
+            }
             case "fixture" -> {
                 if (!username.equals("ViaJavaTest")) throw new IllegalStateException("Fixture teleport is restricted to ViaJavaTest");
                 double x = Double.parseDouble(args[1]), y = Double.parseDouble(args[2]), z = Double.parseDouble(args[3]);

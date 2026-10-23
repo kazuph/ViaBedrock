@@ -143,6 +143,10 @@ public final class InventoryRequestState<K> {
         return !this.pending.isEmpty();
     }
 
+    public boolean isPending(final K slot) {
+        return this.pending.values().stream().anyMatch(request -> request.after.containsKey(slot));
+    }
+
     private static boolean sameStack(final BedrockItem left, final BedrockItem right) {
         return left.isEmpty() && right.isEmpty() || left.amount() == right.amount() && !left.isDifferent(right);
     }

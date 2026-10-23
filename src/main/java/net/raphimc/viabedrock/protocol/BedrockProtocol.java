@@ -149,6 +149,7 @@ public class BedrockProtocol extends StatelessTransitionProtocol<ClientboundBedr
         user.put(new ScoreboardTracker());
         user.put(new InventoryTracker(user));
         user.put(new ItemStackRequestTracker(user));
+        user.put(new SelectedItemActions(user));
         user.put(new BreakingTracker(user));
 
         user.put(new InventoryTransactionRewriter(user));
@@ -175,6 +176,9 @@ public class BedrockProtocol extends StatelessTransitionProtocol<ClientboundBedr
                 ViaBedrock.getPlatform().getLogger().info("INVENTORY_TRACE time=" + System.nanoTime() + " connection=" + wrapper.user().getId()
                     + " direction=" + direction + " packet=" + name + " payload=" + (input == null ? "" : ByteBufUtil.hexDump(input)));
             }
+        }
+        if (direction == Direction.SERVERBOUND && state == State.PLAY && wrapper.user().get(SelectedItemActions.class).defer(wrapper)) {
+            throw CancelException.generate();
         }
         if (direction == Direction.CLIENTBOUND) {
             State serverState = wrapper.user().getProtocolInfo().getServerState();

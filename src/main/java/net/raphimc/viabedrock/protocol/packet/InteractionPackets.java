@@ -261,6 +261,11 @@ public final class InteractionPackets {
             );
             transactionPacket.write(inventoryTransactionRewriter.getInventoryTransactionType(), inventoryTransaction);
 
+            if (Boolean.getBoolean("viabedrock.traceInventory")) {
+                ViaBedrock.getPlatform().getLogger().info("INVENTORY_USE time=" + System.nanoTime() + " slot="
+                    + inventoryTracker.getInventoryContainer().getSelectedHotbarSlot() + " item="
+                    + inventoryTracker.getInventoryContainer().getSelectedHotbarItem() + " position=" + position);
+            }
             transactionPacket.sendToServer(BedrockProtocol.class);
 
             // Bedrock sends a stop item use on after the transaction packet

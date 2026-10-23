@@ -1,0 +1,14 @@
+fixture 235.5 76 -84.5 30
+select 1
+creative 37 1 64
+expect-ack -1 0 10
+creative 37 63 64
+use-on 236 75 -84 UP 0.5 1 0.5
+select 2
+creative 38 1 64
+use-on 237 75 -84 UP 0.5 1 0.5
+expect-ack -3 0 10
+expect-ack -5 0 10
+expect-block 236 76 -84 15 10
+expect-block 237 76 -84 1 10
+snapshot

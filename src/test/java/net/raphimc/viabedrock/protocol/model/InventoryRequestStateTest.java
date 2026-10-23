@@ -45,6 +45,8 @@ public class InventoryRequestStateTest {
         final InventoryRequestState<String> state = new InventoryRequestState<>(confirmed::get, confirmed::put);
         final var first = state.submit(Map.of("slot", stack(32, 10)), Set.of());
         final var next = state.submit(Map.of("slot", stack(16, 10)), Set.of());
+        assertTrue(state.isPending("slot"));
+        assertFalse(state.isPending("unrelated"));
         assertEquals(-1, first.id());
         assertEquals(-3, next.id());
         assertEquals(first.id(), state.takeReady().requests().get(0).id());

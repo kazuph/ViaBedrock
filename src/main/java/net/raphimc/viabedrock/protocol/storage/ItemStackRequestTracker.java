@@ -74,6 +74,18 @@ public final class ItemStackRequestTracker extends StoredObject {
         return this.state.projected(slot);
     }
 
+    public boolean isPending() {
+        return this.state.isPending() || this.hasQueuedInventoryActions();
+    }
+
+    public boolean isPending(final Slot slot) {
+        return this.state.isPending(slot) || this.hasQueuedInventoryActions();
+    }
+
+    public boolean hasQueuedInventoryActions() {
+        return this.inventoryOpenRequested || !this.waitingForInventory.isEmpty();
+    }
+
     public CreativeInventory creative() {
         return this.creative;
     }
@@ -125,6 +137,7 @@ public final class ItemStackRequestTracker extends StoredObject {
         while (!this.waitingForInventory.isEmpty() && inventory.getCurrentContainer() != null && inventory.getPendingCloseContainer() == null) {
             this.waitingForInventory.removeFirst().run();
         }
+        this.user().get(SelectedItemActions.class).drain();
     }
 
     public void closed() {
@@ -538,6 +551,7 @@ public final class ItemStackRequestTracker extends StoredObject {
         }
         this.resync();
         this.flush();
+        this.user().get(SelectedItemActions.class).drain();
         if (!this.state.isPending()) {
             final List<Runnable> settled = new ArrayList<>(this.settled);
             this.settled.clear();

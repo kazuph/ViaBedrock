@@ -374,6 +374,7 @@ public final class InventoryPackets {
             final byte containerId = wrapper.read(Types.BYTE); // container id
             final boolean shouldSelectSlot = wrapper.read(Types.BOOLEAN); // should select slot
             if (slot >= 0 && slot < 9 && containerId == inventoryContainer.containerId() && shouldSelectSlot) {
+                inventoryContainer.selectFromServer((byte) slot);
                 wrapper.write(Types.VAR_INT, slot); // slot
             } else {
                 wrapper.cancel();
