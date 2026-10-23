@@ -70,6 +70,8 @@ public final class JavaPlayClient extends SessionAdapter {
     private Session session;
     private ItemStack cursor;
     private int revision;
+    private int cursorUpdates;
+    private int cursorUpdateMarker;
     private boolean closed;
     private String username;
     private double playerX, playerY, playerZ;
@@ -170,6 +172,7 @@ public final class JavaPlayClient extends SessionAdapter {
                 synchronized (changed) {
                     containers.put(content.getContainerId(), content.getItems().clone());
                     cursor = content.getCarriedItem();
+                    cursorUpdates++;
                     revision = content.getStateId();
                     log("content", content);
                     changed.notifyAll();
@@ -185,6 +188,7 @@ public final class JavaPlayClient extends SessionAdapter {
             } else if (packet instanceof ClientboundSetCursorItemPacket carried) {
                 synchronized (changed) {
                     cursor = carried.getContents();
+                    cursorUpdates++;
                     log("cursor", String.valueOf(cursor));
                     changed.notifyAll();
                 }
@@ -298,12 +302,48 @@ public final class JavaPlayClient extends SessionAdapter {
                 }
                 log("PASS", command);
             }
+            case "mark-cursor-updates" -> {
+                synchronized (changed) { cursorUpdateMarker = cursorUpdates; }
+            }
+            case "expect-no-cursor-updates" -> {
+                synchronized (changed) {
+                    if (cursorUpdates != cursorUpdateMarker) throw new AssertionError("Server overwrote the native creative cursor: " + (cursorUpdates - cursorUpdateMarker));
+                }
+                log("PASS", command);
+            }
+            case "count-server" -> {
+                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log").contains(args[1])) throw new IllegalArgumentException(command);
+                String marker = "VB-count-" + UUID.randomUUID();
+                Process logs = new ProcessBuilder("ssh", "pc", "docker logs --follow --since 1s minecraft-edu-test").redirectErrorStream(true).start();
+                try {
+                    CompletableFuture<Integer> result = CompletableFuture.supplyAsync(() -> {
+                        try (var reader = new BufferedReader(new InputStreamReader(logs.getInputStream()))) {
+                            boolean marked = false;
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                log("server_count_log", line);
+                                if (line.contains(marker)) marked = true;
+                                if (!marked) continue;
+                                var count = java.util.regex.Pattern.compile("ViaJavaTest has (\\d+) items that match the criteria").matcher(line);
+                                if (count.find()) return Integer.parseInt(count.group(1));
+                                if (line.contains("Could not clear the inventory of ViaJavaTest, no items to remove")) return 0;
+                            }
+                            throw new IllegalStateException("Server log ended before item count");
+                        } catch (Exception error) { throw new java.util.concurrent.CompletionException(error); }
+                    });
+                    copyConsole("say " + marker);
+                    copyConsole("clear ViaJavaTest " + args[1] + " 0 0");
+                    int actual = result.get(30, TimeUnit.SECONDS);
+                    if (actual != Integer.parseInt(args[2])) throw new AssertionError(command + "; actual=" + actual);
+                    log("PASS", command);
+                } finally { logs.destroy(); }
+            }
             case "fixture-clear" -> {
-                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass").contains(args[1])) throw new IllegalArgumentException(command);
+                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log").contains(args[1])) throw new IllegalArgumentException(command);
                 copyConsole("clear ViaJavaTest " + args[1]);
             }
             case "fixture-clear-race" -> {
-                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass").contains(args[1])) throw new IllegalArgumentException(command);
+                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log").contains(args[1])) throw new IllegalArgumentException(command);
                 long delay = Long.parseLong(args[2]);
                 if (delay < 0) throw new IllegalArgumentException(command);
                 consoleCommands.add(new ProcessBuilder("ssh", "pc", "docker exec minecraft-edu-test send-command 'clear ViaJavaTest " + args[1] + "'").inheritIO().start());
@@ -344,7 +384,7 @@ public final class JavaPlayClient extends SessionAdapter {
             case "fixture-slot", "fixture-hotbar" -> {
                 int slot = Integer.parseInt(args[1]), count = Integer.parseInt(args[3]);
                 boolean hotbar = args[0].equals("fixture-hotbar");
-                if (!username.equals("ViaJavaTest") || slot < 0 || slot >= (hotbar ? 9 : 27) || !Set.of("stone", "glass", "air").contains(args[2]) || count < 0 || count > 64) throw new IllegalArgumentException(command);
+                if (!username.equals("ViaJavaTest") || slot < 0 || slot >= (hotbar ? 9 : 27) || !Set.of("stone", "glass", "oak_planks", "oak_log", "air").contains(args[2]) || count < 0 || count > 64) throw new IllegalArgumentException(command);
                 copyConsole("replaceitem entity ViaJavaTest slot." + (hotbar ? "hotbar" : "inventory") + " " + slot + " " + args[2] + " " + count);
             }
             case "fixture-chest" -> {
