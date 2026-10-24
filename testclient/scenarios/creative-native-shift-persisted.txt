@@ -1,0 +1,6 @@
+expect-spawn 30
+expect-inventory /tmp/vb-native-shift-persisted.bin 10
+count-server stone 96
+count-server glass 1
+expect-cursor 0 0 10
+snapshot

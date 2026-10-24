@@ -598,6 +598,16 @@ public final class JavaPlayClient extends SessionAdapter {
                     session.send(new ServerboundSetCreativeModeSlotPacket(Short.parseShort(args[2]), rememberedSwapLeft));
                 }
             }
+            case "native-images" -> {
+                if ((args.length - 1) % 3 != 0) throw new IllegalArgumentException(command);
+                synchronized (session) {
+                    for (int i = 1; i < args.length; i += 3) {
+                        int count = Integer.parseInt(args[i + 2]);
+                        session.send(new ServerboundSetCreativeModeSlotPacket(Short.parseShort(args[i]),
+                            count == 0 ? null : new ItemStack(Integer.parseInt(args[i + 1]), count)));
+                    }
+                }
+            }
             case "native-swap" -> {
                 int left = Integer.parseInt(args[1]), right = Integer.parseInt(args[2]);
                 ItemStack a, b;
