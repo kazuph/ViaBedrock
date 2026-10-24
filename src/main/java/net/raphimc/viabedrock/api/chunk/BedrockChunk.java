@@ -29,6 +29,7 @@ import java.util.List;
 public class BedrockChunk extends Chunk1_18 {
 
     private boolean requestSubChunks = false;
+    private int awaitedSubChunks = 0;
 
     public BedrockChunk(final int x, final int z, final BedrockChunkSection[] sections) {
         this(x, z, sections, new CompoundTag(), new ArrayList<>());
@@ -49,6 +50,23 @@ public class BedrockChunk extends Chunk1_18 {
 
     public void setRequestSubChunks(final boolean requestSubChunks) {
         this.requestSubChunks = requestSubChunks;
+    }
+
+    /**
+     * Number of sub chunks that must still be applied before this chunk may replace the chunk the Java client already displays.
+     */
+    public boolean isAwaitingSubChunks() {
+        return this.awaitedSubChunks > 0;
+    }
+
+    public void setAwaitedSubChunks(final int awaitedSubChunks) {
+        this.awaitedSubChunks = awaitedSubChunks;
+    }
+
+    public void markSubChunkApplied() {
+        if (this.awaitedSubChunks > 0) {
+            this.awaitedSubChunks--;
+        }
     }
 
     public BedrockBlockEntity getBlockEntityAt(final BlockPosition position) {
