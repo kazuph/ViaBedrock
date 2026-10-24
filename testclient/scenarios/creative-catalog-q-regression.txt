@@ -1,0 +1,22 @@
+# Real catalog CAP05/CAP06 packets have only slot=-1, with no source slot change.
+expect-spawn 30
+fixture-reset
+fixture 235.5 76 -84.5 30
+chat VB-catalog-setup
+expect-chat VB-catalog-setup 10
+mark-item-spawns catalog-q
+creative -1 163 1
+fixture 244.5 76 -84.5 30
+expect-ack -1 0 10
+expect-item-spawns catalog-q 1 163 1 10
+count-server oak_log 0
+expect-live-item-spawns catalog-q 1 163 1 10
+mark-item-spawns catalog-ctrl-q
+creative -1 163 64
+fixture 239.5 76 -81.5 30
+expect-ack -3 0 10
+expect-item-spawns catalog-ctrl-q 1 163 64 10
+count-server oak_log 0
+expect-live-item-spawns catalog-ctrl-q 1 163 64 10
+close 0
+snapshot

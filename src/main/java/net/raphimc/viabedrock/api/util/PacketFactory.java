@@ -38,6 +38,7 @@ import net.raphimc.viabedrock.protocol.data.enums.java.GameEventType;
 import net.raphimc.viabedrock.protocol.data.enums.java.generated.CustomChatCompletionsAction;
 import net.raphimc.viabedrock.protocol.model.Position3f;
 import net.raphimc.viabedrock.protocol.storage.InventoryTracker;
+import net.raphimc.viabedrock.protocol.storage.ItemStackRequestTracker;
 import net.raphimc.viabedrock.protocol.types.BedrockTypes;
 
 public final class PacketFactory {
@@ -73,6 +74,18 @@ public final class PacketFactory {
     }
 
     public static void sendJavaContainerSetContent(final UserConnection user, final Container container) {
+        if (user.get(ItemStackRequestTracker.class).hasNativeCreativeCursor()) {
+            final var items = container.getJavaItems();
+            for (int slot = 0; slot < items.length; slot++) {
+                final PacketWrapper update = PacketWrapper.create(ClientboundPackets26_3.CONTAINER_SET_SLOT, user);
+                update.write(Types.VAR_INT, (int) container.javaContainerId());
+                update.write(Types.VAR_INT, 0);
+                update.write(Types.SHORT, (short) slot);
+                update.write(VersionedTypes.V26_3.item, items[slot]);
+                update.send(BedrockProtocol.class);
+            }
+            return;
+        }
         final PacketWrapper containerSetContent = PacketWrapper.create(ClientboundPackets26_3.CONTAINER_SET_CONTENT, user);
         writeJavaContainerSetContent(containerSetContent, container);
         containerSetContent.send(BedrockProtocol.class);

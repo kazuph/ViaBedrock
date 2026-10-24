@@ -216,9 +216,10 @@ public final class WorldPackets {
                 requestSectionCount = subChunkLimit < 0 ? endY - startY : subChunkLimit + 1;
             }
 
+            ChunkTracker.trace("LEVEL_CHUNK " + chunkX + "," + chunkZ + " sections=" + sectionCount + " requestSub=" + requestSubChunks + " " + chunkTracker.state());
             final BedrockChunk previousChunk = chunkTracker.getChunk(chunkX, chunkZ);
             if (previousChunk != null) {
-                chunkTracker.unloadChunk(new ChunkPosition(chunkX, chunkZ));
+                chunkTracker.unloadChunk(new ChunkPosition(chunkX, chunkZ), false);
                 if (previousChunk.isRequestSubChunks()) {
                     requestSectionCount = endY - startY;
                 }
@@ -226,9 +227,16 @@ public final class WorldPackets {
 
             final BedrockChunk chunk = chunkTracker.createChunk(chunkX, chunkZ, requestSubChunks ? requestSectionCount : sectionCount);
             if (chunk == null) {
+                if (previousChunk != null) {
+                    chunkTracker.forgetChunkOnClient(new ChunkPosition(chunkX, chunkZ));
+                }
                 return;
             }
             chunk.setRequestSubChunks(requestSubChunks);
+            if (previousChunk != null && requestSubChunks && requestSectionCount > 0) {
+                // The Java client still displays the previous chunk: replace it in one piece once every requested sub chunk arrived
+                chunk.setAwaitedSubChunks(MathUtil.clamp(startY + requestSectionCount, startY + 1, endY) - startY);
+            }
 
             final int fRequestSectionCount = requestSectionCount;
             final Consumer<byte[]> dataConsumer = combinedData -> {
@@ -252,16 +260,7 @@ public final class WorldPackets {
                                 section.addPalette(PaletteType.BIOMES, new BedrockBiomeArray(biomeData));
                             }
                         } else {
-                            for (int i = 0; i < sectionCount; i++) {
-                                BedrockDataPalette biomePalette = BedrockTypes.RUNTIME_DATA_PALETTE.read(dataBuf); // biome palette
-                                if (biomePalette == null) {
-                                    if (i == 0) {
-                                        throw new RuntimeException("First biome palette can not point to previous biome palette");
-                                    }
-                                    biomePalette = ((BedrockDataPalette) sections[i - 1].palette(PaletteType.BIOMES)).copy();
-                                }
-                                sections[i].addPalette(PaletteType.BIOMES, biomePalette);
-                            }
+                            readBiomePalettes(dataBuf, sections);
                         }
 
                         dataBuf.skipBytes(1); // border blocks
@@ -336,6 +335,7 @@ public final class WorldPackets {
                 }
 
                 final BlockPosition absolute = new BlockPosition(center.x() + offset.x(), center.y() + offset.y(), center.z() + offset.z());
+                ChunkTracker.trace("SUB_CHUNK " + absolute.x() + "," + absolute.y() + "," + absolute.z() + " result=" + result);
                 final Consumer<byte[]> dataConsumer = combinedData -> {
                     try {
                         if (result == SubChunkPacketPayload_SubChunkRequestResult.SuccessAllAir) {
@@ -487,6 +487,7 @@ public final class WorldPackets {
             wrapper.write(Types.VAR_INT, radius); // radius
 
             final ChunkTracker chunkTracker = wrapper.user().get(ChunkTracker.class);
+            ChunkTracker.trace("PUBLISH center=" + (position.x() >> 4) + "," + (position.z() >> 4) + " radius=" + radius + " before: " + chunkTracker.state());
             chunkTracker.setRadius(radius);
             chunkTracker.setCenter(position.x() >> 4, position.z() >> 4);
 
@@ -551,6 +552,20 @@ public final class WorldPackets {
             wrapper.write(BedrockTypes.BLOCK_POSITION, position); // position
             wrapper.write(BedrockTypes.NETWORK_TAG, signTag.copy()); // block entity tag
         });
+    }
+
+    static void readBiomePalettes(final ByteBuf buffer, final BedrockChunkSection[] sections) {
+        // Biomes span the entire dimension height, including omitted empty block sections.
+        for (int i = 0; i < sections.length; i++) {
+            BedrockDataPalette biomePalette = BedrockTypes.RUNTIME_DATA_PALETTE.read(buffer);
+            if (biomePalette == null) {
+                if (i == 0) {
+                    throw new IllegalArgumentException("First biome palette can not point to previous biome palette");
+                }
+                biomePalette = ((BedrockDataPalette) sections[i - 1].palette(PaletteType.BIOMES)).copy();
+            }
+            sections[i].addPalette(PaletteType.BIOMES, biomePalette);
+        }
     }
 
     static long packSectionPosition(final BlockPosition section) {

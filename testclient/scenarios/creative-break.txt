@@ -1,0 +1,6 @@
+fixture 235.5 76 -84.5 30
+select 1
+dig START_DIGGING 236 76 -84 UP
+expect-block 236 76 -84 0 10
+dig START_DIGGING 237 76 -84 UP
+expect-block 237 76 -84 0 10

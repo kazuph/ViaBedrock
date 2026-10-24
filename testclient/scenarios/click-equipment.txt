@@ -1,0 +1,12 @@
+fixture 235.5 76 -84.5 30
+creative 25 1084 1
+expect-ack -1 0 10
+click 0 25 1 0
+expect-ack -3 0 10
+expect 0 5 1084 1 10
+expect 0 25 0 0 10
+click 0 5 1 0
+expect-ack -5 0 10
+expect 0 5 0 0 10
+expect 0 16 1084 1 10
+snapshot

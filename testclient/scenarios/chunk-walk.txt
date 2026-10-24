@@ -1,0 +1,19 @@
+expect-spawn 60
+fixture 239.5 120 -81.5 30
+chunk-report w0 12 6
+walk 389.5 -81.5 300
+chunk-report w1 12 4
+walk 539.5 -81.5 300
+chunk-report w2 12 4
+walk 689.5 -81.5 300
+chunk-report w3 12 4
+walk 839.5 -81.5 300
+chunk-report w4 12 4
+walk 989.5 -81.5 300
+chunk-report w5 12 4
+walk 1139.5 -81.5 300
+chunk-report w6 12 4
+walk 1289.5 -81.5 300
+chunk-report w7 12 4
+walk 1439.5 -81.5 300
+chunk-report w8 12 4

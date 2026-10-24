@@ -1,0 +1,5 @@
+expect-spawn 30
+expect 0 43 1 1 30
+creative -1 1 3
+expect-ack -1 0 10
+snapshot

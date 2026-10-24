@@ -39,14 +39,16 @@ import net.raphimc.viabedrock.protocol.types.BedrockTypes;
 public class InventoryContainer extends Container {
 
     private byte selectedHotbarSlot = 0;
+    private final InventoryContainer selectionOwner;
 
     public InventoryContainer(final UserConnection user) {
         super(user, (byte) ContainerID.CONTAINER_ID_INVENTORY.getValue(), ContainerType.INVENTORY, null, null, 36);
+        this.selectionOwner = this;
     }
 
     public InventoryContainer(final UserConnection user, final byte containerId, final BlockPosition position, final InventoryContainer inventoryContainer) {
         super(user, containerId, inventoryContainer.type, inventoryContainer.title, position, inventoryContainer.items, inventoryContainer.validBlockTags);
-        this.selectedHotbarSlot = inventoryContainer.selectedHotbarSlot;
+        this.selectionOwner = inventoryContainer.selectionOwner;
     }
 
     @Override
@@ -93,20 +95,27 @@ public class InventoryContainer extends Container {
     }
 
     public byte getSelectedHotbarSlot() {
-        return this.selectedHotbarSlot;
+        return this.selectionOwner.selectedHotbarSlot;
     }
 
     public BedrockItem getSelectedHotbarItem() {
-        return this.getItem(this.selectedHotbarSlot);
+        return this.selectionOwner.getItem(this.getSelectedHotbarSlot());
     }
 
     public void sendSelectedHotbarSlotToClient() {
         final PacketWrapper setHeldSlot = PacketWrapper.create(ClientboundPackets26_3.SET_HELD_SLOT, this.user);
-        setHeldSlot.write(Types.VAR_INT, (int) this.selectedHotbarSlot);
+        setHeldSlot.write(Types.VAR_INT, (int) this.getSelectedHotbarSlot());
         setHeldSlot.send(BedrockProtocol.class);
     }
 
     public void setSelectedHotbarSlot(final byte slot, final PacketWrapper mobEquipment) {
+        if (this.selectionOwner != this) {
+            this.selectionOwner.setSelectedHotbarSlot(slot, mobEquipment);
+            return;
+        }
+        if (slot < 0 || slot >= 9) {
+            throw new IllegalArgumentException("Hotbar slot out of bounds: " + slot);
+        }
         final BedrockItem oldItem = this.getItem(this.selectedHotbarSlot);
         final BedrockItem newItem = this.getItem(slot);
         this.selectedHotbarSlot = slot;
@@ -115,12 +124,23 @@ public class InventoryContainer extends Container {
 
     @Override
     protected void onSlotChanged(final int slot, final BedrockItem oldItem, final BedrockItem newItem) {
+        if (this.selectionOwner != this) {
+            this.selectionOwner.onSlotChanged(slot, oldItem, newItem);
+            return;
+        }
         super.onSlotChanged(slot, oldItem, newItem);
         if (slot == this.selectedHotbarSlot) {
             final PacketWrapper mobEquipment = PacketWrapper.create(ServerboundBedrockPackets.MOB_EQUIPMENT, this.user);
             this.onSelectedHotbarSlotChanged(oldItem, newItem, mobEquipment);
             mobEquipment.sendToServer(BedrockProtocol.class);
         }
+    }
+
+    public void selectFromServer(final byte slot) {
+        if (slot < 0 || slot >= 9) {
+            throw new IllegalArgumentException("Hotbar slot out of bounds: " + slot);
+        }
+        this.selectionOwner.selectedHotbarSlot = slot;
     }
 
     private void onSelectedHotbarSlotChanged(final BedrockItem oldItem, final BedrockItem newItem, final PacketWrapper mobEquipment) {

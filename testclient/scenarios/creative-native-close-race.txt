@@ -1,0 +1,24 @@
+fixture 239.5 76 -81.5 30
+fixture-clear stone
+fixture-clear glass
+fixture-hotbar 0 stone 64
+fixture-slot 1 air 1
+fixture-slot 2 air 1
+expect 0 36 1 64 10
+chat VB-native-setup
+expect-chat VB-native-setup 10
+mark-cursor-updates
+creative 36 0 0
+creative 10 1 64
+close 0
+creative 11 231 32
+expect-ack -1 0 10
+expect-ack -3 0 10
+chat VB-native-reopened
+expect-chat VB-native-reopened 10
+expect-no-cursor-updates
+close 0
+count-server stone 64
+count-server glass 32
+expect 0 10 1 64 10
+expect 0 11 231 32 10

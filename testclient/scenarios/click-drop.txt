@@ -1,0 +1,13 @@
+expect-spawn 30
+expect 0 14 1050 1 30
+click 0 14 4 0
+expect-ack -1 0 10
+expect 0 14 0 0 10
+select 1
+drop-selected one
+expect-ack -3 0 10
+expect 0 37 1 63 10
+drop-selected all
+expect-ack -5 0 10
+expect 0 37 0 0 10
+snapshot

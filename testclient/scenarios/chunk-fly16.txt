@@ -1,0 +1,70 @@
+expect-spawn 60
+view-distance 16
+fixture 239.5 200 -81.5 30
+chunk-report v0 16 8
+fixture 279.5 200 -81.5 30
+fixture 319.5 200 -81.5 30
+fixture 359.5 200 -81.5 30
+fixture 399.5 200 -81.5 30
+fixture 439.5 200 -81.5 30
+fixture 479.5 200 -81.5 30
+fixture 519.5 200 -81.5 30
+fixture 559.5 200 -81.5 30
+fixture 599.5 200 -81.5 30
+fixture 639.5 200 -81.5 30
+chunk-report v10 16 6
+fixture 679.5 200 -81.5 30
+fixture 719.5 200 -81.5 30
+fixture 759.5 200 -81.5 30
+fixture 799.5 200 -81.5 30
+fixture 839.5 200 -81.5 30
+fixture 879.5 200 -81.5 30
+fixture 919.5 200 -81.5 30
+fixture 959.5 200 -81.5 30
+fixture 999.5 200 -81.5 30
+fixture 1039.5 200 -81.5 30
+chunk-report v20 16 6
+fixture 1079.5 200 -81.5 30
+fixture 1119.5 200 -81.5 30
+fixture 1159.5 200 -81.5 30
+fixture 1199.5 200 -81.5 30
+fixture 1239.5 200 -81.5 30
+fixture 1279.5 200 -81.5 30
+fixture 1319.5 200 -81.5 30
+fixture 1359.5 200 -81.5 30
+fixture 1399.5 200 -81.5 30
+fixture 1439.5 200 -81.5 30
+chunk-report v30 16 6
+fixture 1479.5 200 -81.5 30
+fixture 1519.5 200 -81.5 30
+fixture 1559.5 200 -81.5 30
+fixture 1599.5 200 -81.5 30
+fixture 1639.5 200 -81.5 30
+fixture 1679.5 200 -81.5 30
+fixture 1719.5 200 -81.5 30
+fixture 1759.5 200 -81.5 30
+fixture 1799.5 200 -81.5 30
+fixture 1839.5 200 -81.5 30
+chunk-report v40 16 6
+fixture 1879.5 200 -81.5 30
+fixture 1919.5 200 -81.5 30
+fixture 1959.5 200 -81.5 30
+fixture 1999.5 200 -81.5 30
+fixture 2039.5 200 -81.5 30
+fixture 2079.5 200 -81.5 30
+fixture 2119.5 200 -81.5 30
+fixture 2159.5 200 -81.5 30
+fixture 2199.5 200 -81.5 30
+fixture 2239.5 200 -81.5 30
+chunk-report v50 16 6
+fixture 2279.5 200 -81.5 30
+fixture 2319.5 200 -81.5 30
+fixture 2359.5 200 -81.5 30
+fixture 2399.5 200 -81.5 30
+fixture 2439.5 200 -81.5 30
+fixture 2479.5 200 -81.5 30
+fixture 2519.5 200 -81.5 30
+fixture 2559.5 200 -81.5 30
+fixture 2599.5 200 -81.5 30
+fixture 2639.5 200 -81.5 30
+chunk-report v60 16 6

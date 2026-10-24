@@ -1,0 +1,20 @@
+expect 0 39 63 12 30
+creative 39 0 0
+expect-ack -1 0 10
+expect 0 39 0 0 10
+creative 40 63 31
+expect-ack -3 0 10
+expect 0 40 63 31 10
+creative 40 63 12
+expect-ack -5 0 10
+expect 0 40 63 12 10
+creative 40 0 0
+expect-ack -7 0 10
+expect 0 40 0 0 10
+creative 41 1050 1
+expect-ack -9 0 10
+expect 0 41 1050 1 10
+creative 42 1 64
+expect-ack -11 0 10
+expect 0 42 1 64 10
+snapshot

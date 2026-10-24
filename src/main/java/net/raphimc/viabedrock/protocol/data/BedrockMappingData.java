@@ -112,6 +112,9 @@ public class BedrockMappingData extends MappingDataBase {
     // Items
     private ItemUpgrader bedrockItemUpgrader;
     private BiMap<String, Integer> javaItems;
+    private Int2IntMap javaItemStackLimits;
+    private Map<Integer, Integer> javaItemDefaultDamage;
+    private Map<Integer, String> javaItemEquipmentSlots;
     private Set<String> bedrockBlockItems;
     private Set<String> bedrockMetaItems;
     private Map<String, Set<String>> bedrockItemTags;
@@ -119,6 +122,7 @@ public class BedrockMappingData extends MappingDataBase {
     private Map<String, Map<BlockState, JavaItemMapping>> bedrockToJavaBlockItems;
     private Map<String, Map<Integer, JavaItemMapping>> bedrockToJavaMetaItems;
     private Map<ContainerType, Integer> bedrockToJavaContainers;
+    private List<String> javaMenus;
 
     // Entities
     private BiMap<String, Integer> bedrockEntities;
@@ -409,6 +413,19 @@ public class BedrockMappingData extends MappingDataBase {
             for (int i = 0; i < javaItemsJson.size(); i++) {
                 this.javaItems.put(Key.namespaced(javaItemsJson.get(i).getAsString()), i);
             }
+            final JsonObject stackLimits = this.readJson("java/item_stack_limits.json");
+            this.javaItemStackLimits = new Int2IntOpenHashMap(this.javaItems.size());
+            for (Map.Entry<String, Integer> item : this.javaItems.entrySet()) {
+                this.javaItemStackLimits.put(item.getValue().intValue(), stackLimits.get(item.getKey()).getAsInt());
+            }
+            this.javaItemDefaultDamage = new HashMap<>();
+            for (Map.Entry<String, JsonElement> item : this.readJson("java/item_default_damage.json").entrySet()) {
+                this.javaItemDefaultDamage.put(this.javaItems.get(item.getKey()), item.getValue().getAsInt());
+            }
+            this.javaItemEquipmentSlots = new HashMap<>();
+            for (Map.Entry<String, JsonElement> item : this.readJson("java/item_equipment_slots.json").entrySet()) {
+                this.javaItemEquipmentSlots.put(this.javaItems.get(item.getKey()), item.getValue().getAsString());
+            }
 
             final JsonArray bedrockItemsJson = this.readJson("bedrock/runtime_item_states.json", JsonArray.class);
             final Set<String> bedrockItems = new HashSet<>(bedrockItemsJson.size());
@@ -554,7 +571,7 @@ public class BedrockMappingData extends MappingDataBase {
             }
 
             final JsonArray javaMenusJson = javaViaMappingJson.get("menus").getAsJsonArray();
-            final List<String> javaMenus = new ArrayList<>(javaMenusJson.size());
+            final List<String> javaMenus = this.javaMenus = new ArrayList<>(javaMenusJson.size());
             for (JsonElement menuJson : javaMenusJson) {
                 javaMenus.add(Key.namespaced(menuJson.getAsString()));
             }
@@ -1125,6 +1142,21 @@ public class BedrockMappingData extends MappingDataBase {
         return this.javaItems;
     }
 
+    public int getJavaItemStackLimit(final int itemId) {
+        if (!this.javaItemStackLimits.containsKey(itemId)) {
+            throw new IllegalArgumentException("Unknown Java item stack limit: " + itemId);
+        }
+        return this.javaItemStackLimits.get(itemId);
+    }
+
+    public Map<Integer, Integer> getJavaItemDefaultDamage() {
+        return this.javaItemDefaultDamage;
+    }
+
+    public String getJavaItemEquipmentSlot(final int itemId) {
+        return this.javaItemEquipmentSlots.get(itemId);
+    }
+
     public Set<String> getBedrockBlockItems() {
         return this.bedrockBlockItems;
     }
@@ -1151,6 +1183,14 @@ public class BedrockMappingData extends MappingDataBase {
 
     public Map<ContainerType, Integer> getBedrockToJavaContainers() {
         return this.bedrockToJavaContainers;
+    }
+
+    public int getJavaMenuId(final String name) {
+        final int id = this.javaMenus.indexOf(name);
+        if (id == -1) {
+            throw new IllegalArgumentException("Unknown Java menu: " + name);
+        }
+        return id;
     }
 
     public BiMap<String, Integer> getBedrockEntities() {

@@ -42,10 +42,6 @@ public class BedrockItemType extends Type<BedrockItem> {
     @Override
     public BedrockItem read(final ByteBuf buffer) {
         final int id = BedrockTypes.VAR_INT.read(buffer);
-        if (id == 0 || id == -1) {
-            return BedrockItem.empty();
-        }
-
         final BedrockItem item = new BedrockItem(id);
         item.setAmount(buffer.readUnsignedShortLE());
         item.setData(BedrockTypes.UNSIGNED_VAR_INT.read(buffer));

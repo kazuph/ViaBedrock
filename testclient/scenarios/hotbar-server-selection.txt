@@ -1,0 +1,6 @@
+fixture 235.5 76 -84.5 30
+creative 37 63 17
+use-on 235 75 -83 UP 0.5 1 0.5
+expect-ack -1 0 10
+expect-block 235 76 -83 15 10
+snapshot

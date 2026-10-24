@@ -68,6 +68,7 @@ import java.util.stream.Collectors;
 // TODO: Feature: Lighting
 public class ChunkTracker extends StoredObject {
 
+    private static final boolean TRACE = Boolean.getBoolean("viabedrock.traceChunks");
     private static final byte[] FULL_LIGHT = new byte[ChunkSectionLight.LIGHT_LENGTH];
 
     static {
@@ -107,6 +108,17 @@ public class ChunkTracker extends StoredObject {
         this.radius = oldChunkTracker != null ? oldChunkTracker.radius : user.get(ClientSettingsStorage.class).viewDistance();
     }
 
+    public static void trace(final String message) {
+        if (TRACE) {
+            ViaBedrock.getPlatform().getLogger().log(Level.INFO, "[chunktrace " + System.nanoTime() + "] " + message);
+        }
+    }
+
+    public String state() {
+        return "center=" + this.centerX + "," + this.centerZ + " radius=" + this.radius + " chunks=" + this.chunks.size()
+            + " reqs=" + this.subChunkRequests.size() + " pending=" + this.pendingSubChunks.size();
+    }
+
     public void setCenter(final int x, final int z) {
         this.centerX = x;
         this.centerZ = z;
@@ -120,6 +132,7 @@ public class ChunkTracker extends StoredObject {
 
     public BedrockChunk createChunk(final int chunkX, final int chunkZ, final int nonNullSectionCount) {
         if (!this.isInLoadDistance(chunkX, chunkZ)) {
+            trace("DROP level_chunk outside load distance " + chunkX + "," + chunkZ + " " + this.state());
             return null;
         }
         if (!this.isInRenderDistance(chunkX, chunkZ)) {
@@ -145,9 +158,23 @@ public class ChunkTracker extends StoredObject {
     }
 
     public void unloadChunk(final ChunkPosition chunkPos) {
+        this.unloadChunk(chunkPos, true);
+    }
+
+    /**
+     * @param forgetOnClient false when the server re-sends a chunk that is still displayed: the Java client keeps the old chunk until the replacement is sent
+     */
+    public void unloadChunk(final ChunkPosition chunkPos, final boolean forgetOnClient) {
+        trace("UNLOAD " + chunkPos.chunkX() + "," + chunkPos.chunkZ() + " forget=" + forgetOnClient);
         this.chunks.remove(chunkPos.chunkKey());
         this.user().get(EntityTracker.class).removeItemFrame(chunkPos);
 
+        if (forgetOnClient) {
+            this.forgetChunkOnClient(chunkPos);
+        }
+    }
+
+    public void forgetChunkOnClient(final ChunkPosition chunkPos) {
         final PacketWrapper unloadChunk = PacketWrapper.create(ClientboundPackets26_3.FORGET_LEVEL_CHUNK, this.user());
         unloadChunk.write(Types.CHUNK_POSITION, chunkPos); // chunk position
         unloadChunk.send(BedrockProtocol.class);
@@ -325,11 +352,13 @@ public class ChunkTracker extends StoredObject {
 
     public boolean mergeSubChunk(final int chunkX, final int subChunkY, final int chunkZ, final BedrockChunkSection other, final List<BedrockBlockEntity> blockEntities) {
         if (!this.isInLoadDistance(chunkX, chunkZ)) {
+            trace("DROP sub_chunk outside load distance " + chunkX + "," + subChunkY + "," + chunkZ + " " + this.state());
             return false;
         }
 
         final SubChunkPosition position = new SubChunkPosition(chunkX, subChunkY, chunkZ);
         if (!this.pendingSubChunks.contains(position)) {
+            trace("DROP sub_chunk not pending " + position + " " + this.state());
             ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Received sub chunk that was not requested: " + position);
             return false;
         }
@@ -337,11 +366,13 @@ public class ChunkTracker extends StoredObject {
 
         final BedrockChunk chunk = this.getChunk(chunkX, chunkZ);
         if (chunk == null) {
+            trace("DROP sub_chunk for unloaded chunk " + position + " " + this.state());
             ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Received sub chunk for unloaded chunk: " + position);
             return false;
         }
 
         final BedrockChunkSection section = chunk.getSections()[subChunkY + Math.abs(this.minY >> 4)];
+        chunk.markSubChunkApplied();
         section.mergeWith(this.handleBlockPalette(other));
         section.applyPendingBlockUpdates(this.bedrockAirId());
         blockEntities.forEach(blockEntity -> chunk.removeBlockEntityAt(blockEntity.position()));
@@ -420,7 +451,7 @@ public class ChunkTracker extends StoredObject {
 
     public void sendChunk(final int chunkX, final int chunkZ) {
         final BedrockChunk chunk = this.getChunk(chunkX, chunkZ);
-        if (chunk == null) {
+        if (chunk == null || chunk.isAwaitingSubChunks()) {
             return;
         }
 
@@ -480,6 +511,12 @@ public class ChunkTracker extends StoredObject {
             return;
         }
 
+        if (TRACE) {
+            final long dropped = this.subChunkRequests.stream().filter(s -> !this.isInLoadDistance(s.chunkX, s.chunkZ)).count();
+            if (dropped > 0) {
+                trace("DROP queued sub_chunk requests " + dropped + " " + this.state());
+            }
+        }
         this.subChunkRequests.removeIf(s -> !this.isInLoadDistance(s.chunkX, s.chunkZ));
         final BlockPosition basePosition = new BlockPosition(this.centerX, 0, this.centerZ);
         while (!this.subChunkRequests.isEmpty()) {

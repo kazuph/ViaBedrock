@@ -1,0 +1,40 @@
+fixture 239.5 76 -81.5 30
+fixture-hotbar 2 stone 64
+fixture-chest full
+use-on 240 76 -80 UP 0.5 1 0.5
+expect-menu 27 10
+expect open 0 1 60 10
+fixture-slot 17 glass 7
+expect open 44 231 7 10
+click open 56 1 0
+expect-ack -1 0 10
+expect open 0 1 64 10
+expect open 56 1 60 10
+click open 56 1 0
+expect open 0 1 64 10
+expect open 56 1 60 10
+close open
+use-on 240 76 -80 UP 0.5 1 0.5
+expect-menu 27 10
+expect open 0 1 64 10
+expect open 56 1 60 10
+close open
+fixture-chest normal
+fixture-slot 17 air 1
+use-on 242 76 -80 UP 0.5 1 0.5
+expect-menu 54 10
+expect open 30 231 20 10
+expect open 71 0 0 10
+click open 30 1 0
+expect-ack -3 0 10
+expect open 30 0 0 10
+expect open 89 231 20 10
+click open 89 1 0
+expect-ack -5 0 10
+expect open 1 231 20 10
+expect open 89 0 0 10
+close open
+use-on 242 76 -80 UP 0.5 1 0.5
+expect-menu 54 10
+expect open 1 231 20 10
+snapshot

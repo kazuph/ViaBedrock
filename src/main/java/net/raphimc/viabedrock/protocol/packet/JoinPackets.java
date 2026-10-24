@@ -372,6 +372,10 @@ public final class JoinPackets {
                 gameSession.setCommandsEnabled(commandsEnabled);
                 gameSession.setInventoryServerAuthoritative(inventoryServerAuthoritative);
                 gameSession.setBlockBreakingServerAuthoritative(blockBreakingServerAuthoritative);
+                if (Boolean.getBoolean("viabedrock.traceInventory")) {
+                    ViaBedrock.getPlatform().getLogger().info("INVENTORY_AUTHORITY inventory=" + inventoryServerAuthoritative
+                        + " blockBreaking=" + blockBreakingServerAuthoritative + " engine=" + serverEngine + " version=" + vanillaVersion);
+                }
 
                 final PlayerAbilities playerAbilities = new PlayerAbilities(entityUniqueId, (byte) playerPermission, (byte) CommandPermissionLevel.Any.getValue());
                 final ClientPlayerEntity clientPlayer = new ClientPlayerEntity(wrapper.user(), entityRuntimeId, wrapper.user().getProtocolInfo().getUuid(), playerAbilities);

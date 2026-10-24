@@ -1,0 +1,28 @@
+expect-spawn 60
+view-distance 16
+fixture 239.5 200 -81.5 30
+chunk-report base 16 10
+fixture 271.5 200 -81.5 30
+chunk-report away2 16 8
+fixture 239.5 200 -81.5 30
+chunk-report back2 16 10
+fixture 303.5 200 -81.5 30
+chunk-report away4 16 8
+fixture 239.5 200 -81.5 30
+chunk-report back4 16 10
+fixture 335.5 200 -81.5 30
+chunk-report away6 16 8
+fixture 239.5 200 -81.5 30
+chunk-report back6 16 10
+fixture 367.5 200 -81.5 30
+chunk-report away8 16 8
+fixture 239.5 200 -81.5 30
+chunk-report back8 16 10
+fixture 431.5 200 -81.5 30
+chunk-report away12 16 8
+fixture 239.5 200 -81.5 30
+chunk-report back12 16 10
+fixture 495.5 200 -81.5 30
+chunk-report away16 16 8
+fixture 239.5 200 -81.5 30
+chunk-report back16 16 10

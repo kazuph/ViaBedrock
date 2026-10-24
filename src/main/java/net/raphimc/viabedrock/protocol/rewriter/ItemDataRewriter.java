@@ -49,7 +49,9 @@ public final class ItemDataRewriter {
 
             if (bedrockTag.get("ench") instanceof ListTag<?> enchantments) {
 
-                final StructuredData<Enchantments> enchantmentsData = javaItem.dataContainer().getData(StructuredDataKey.ENCHANTMENTS1_21_5);
+                final StructuredDataKey<Enchantments> enchantmentsKey = javaItem.identifier() == BedrockProtocol.MAPPINGS.getJavaItems().get("minecraft:enchanted_book")
+                    ? StructuredDataKey.STORED_ENCHANTMENTS1_21_5 : StructuredDataKey.ENCHANTMENTS1_21_5;
+                final StructuredData<Enchantments> enchantmentsData = javaItem.dataContainer().getData(enchantmentsKey);
                 final Enchantments javaEnchantments;
                 if (enchantmentsData == null || enchantmentsData.isEmpty()) {
                     javaEnchantments = new Enchantments(true);
@@ -89,7 +91,7 @@ public final class ItemDataRewriter {
                     }
                 }
 
-                javaItem.dataContainer().set(StructuredDataKey.ENCHANTMENTS1_21_5, javaEnchantments);
+                javaItem.dataContainer().set(enchantmentsKey, javaEnchantments);
             }
 
         }

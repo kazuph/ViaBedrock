@@ -16,3 +16,6 @@ hs_err_pid*
 build/
 out/
 /run/
+
+# Python integration tools
+__pycache__/

@@ -26,6 +26,7 @@ import net.raphimc.viabedrock.protocol.data.enums.bedrock.generated.ContainerTyp
 import net.raphimc.viabedrock.protocol.data.enums.java.generated.ContainerInput;
 import net.raphimc.viabedrock.protocol.model.BedrockItem;
 import net.raphimc.viabedrock.protocol.rewriter.ItemRewriter;
+import net.raphimc.viabedrock.protocol.storage.ItemStackRequestTracker;
 
 import java.util.Arrays;
 import java.util.Set;
@@ -38,7 +39,7 @@ public abstract class Container {
     protected final ContainerType type;
     protected final TextComponent title;
     protected final BlockPosition position;
-    protected final BedrockItem[] items;
+    protected BedrockItem[] items;
     protected final Set<String> validBlockTags;
 
     public Container(final UserConnection user, final byte containerId, final ContainerType type, final TextComponent title, final BlockPosition position, final int size, final String... validBlockTags) {
@@ -72,11 +73,16 @@ public abstract class Container {
     }
 
     public Item getJavaItem(final int slot) {
-        return this.user.get(ItemRewriter.class).javaItem(this.getItem(slot));
+        final ItemStackRequestTracker requests = this.user.get(ItemStackRequestTracker.class);
+        return this.user.get(ItemRewriter.class).javaItem(requests.projected(requests.slot(this, slot)));
     }
 
     public Item[] getJavaItems() {
-        return this.user.get(ItemRewriter.class).javaItems(this.items);
+        final Item[] items = new Item[this.items.length];
+        for (int i = 0; i < items.length; i++) {
+            items[i] = this.getJavaItem(i);
+        }
+        return items;
     }
 
     public BedrockItem getItem(final int slot) {
@@ -148,6 +154,7 @@ public abstract class Container {
     }
 
     protected void onSlotChanged(final int slot, final BedrockItem oldItem, final BedrockItem newItem) {
+        this.user.get(ItemStackRequestTracker.class).observed(this, slot);
     }
 
 }

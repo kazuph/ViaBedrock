@@ -323,12 +323,16 @@ public final class ClientPlayerPackets {
                 case START_DESTROY_BLOCK -> {
                     clientPlayer.sendSwingPacketToServer();
                     clientPlayer.cancelNextSwingPacket();
-                    clientPlayer.setBlockBreakingInfo(new ClientPlayerEntity.BlockBreakingInfo(position, direction));
-                    // TODO: Handle instant breaking
+                    clientPlayer.setBlockBreakingInfo(clientPlayer.javaGameMode() == GameMode.CREATIVE ? null : new ClientPlayerEntity.BlockBreakingInfo(position, direction));
                     // TODO: Test breaking fire
                     // TODO: The java client keeps spamming swing packets while waiting for the block break cooldown. Those need to be cancelled
 
                     clientPlayer.addAuthInputBlockAction(new ClientPlayerEntity.AuthInputBlockAction(PlayerActionType.StartDestroyBlock, position, direction.ordinal()));
+                    // Creative Java sends START alone; Bedrock still needs the completed break prediction.
+                    if (clientPlayer.javaGameMode() == GameMode.CREATIVE) {
+                        clientPlayer.addAuthInputBlockAction(new ClientPlayerEntity.AuthInputBlockAction(PlayerActionType.PredictDestroyBlock, position, direction.ordinal()));
+                        clientPlayer.addAuthInputBlockAction(new ClientPlayerEntity.AuthInputBlockAction(PlayerActionType.AbortDestroyBlock, position, 0));
+                    }
                 }
                 case ABORT_DESTROY_BLOCK -> {
                     clientPlayer.setBlockBreakingInfo(null);
@@ -450,6 +454,7 @@ public final class ClientPlayerPackets {
             clientPlayer.setInputFlags(inputFlags);
         });
         protocol.registerServerbound(ServerboundPackets26_3.CLIENT_TICK_END, ServerboundBedrockPackets.PLAYER_AUTH_INPUT, wrapper -> {
+            wrapper.user().get(ItemStackRequestTracker.class).endCreativeTick();
             final ClientPlayerEntity clientPlayer = wrapper.user().get(EntityTracker.class).getClientPlayer();
             final Position3f prevPosition = clientPlayer.prevPosition();
             final boolean prevOnGround = clientPlayer.prevOnGround();
