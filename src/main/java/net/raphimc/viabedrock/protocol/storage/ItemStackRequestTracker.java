@@ -59,6 +59,9 @@ public final class ItemStackRequestTracker extends StoredObject {
     private boolean inventoryOpenRequested;
     private boolean nativeCreativeCursor;
     private Item pendingCreativeDrop;
+    private final List<CreativeSlot> creativeSlots = new ArrayList<>();
+    private final Map<Integer, Item> nativeCursorChanges = new HashMap<>();
+    private final List<Item> rejectedCreativeCarries = new ArrayList<>();
     private int dragWindow = -1;
     private int dragMode = -1;
     private final Set<Slot> dragSlots = new LinkedHashSet<>();
@@ -85,7 +88,7 @@ public final class ItemStackRequestTracker extends StoredObject {
     }
 
     public boolean hasQueuedInventoryActions() {
-        return this.inventoryOpenRequested || !this.waitingForInventory.isEmpty() || this.pendingCreativeDrop != null;
+        return this.inventoryOpenRequested || !this.waitingForInventory.isEmpty() || this.pendingCreativeDrop != null || !this.creativeSlots.isEmpty();
     }
 
     public CreativeInventory creative() {
@@ -113,7 +116,7 @@ public final class ItemStackRequestTracker extends StoredObject {
     public void creativeSlot(final int javaSlot, final Item requested) {
         // The creative screen sends slot images, but never its locally carried stack.
         this.nativeCreativeCursor = true;
-        this.withInventory(() -> this.applyCreativeSlot(javaSlot, requested));
+        this.creativeSlots.add(new CreativeSlot(javaSlot, requested.copy()));
     }
 
     private void withInventory(final Runnable action) {
@@ -148,8 +151,26 @@ public final class ItemStackRequestTracker extends StoredObject {
         this.user().get(SelectedItemActions.class).drain();
     }
 
+    public void invalidateContainer(final Container container) {
+        if (container == null) {
+            return;
+        }
+        final Container hud = this.user().get(InventoryTracker.class).getHudContainer();
+        final Set<Integer> invalidated = this.state.invalidateUnsent(slot -> slot.container == container
+            || container.type() == ContainerType.CONTAINER && slot.container == hud && slot.index == 0);
+        this.discardRejected(invalidated);
+        if (Boolean.getBoolean("viabedrock.traceInventory")) {
+            ViaBedrock.getPlatform().getLogger().info("INVENTORY_INVALIDATED container=" + container.javaContainerId() + " requests=" + invalidated);
+        }
+        if (this.dragWindow == container.javaContainerId()) {
+            this.dragSlots.clear();
+            this.dragWindow = -1;
+        }
+    }
+
     public void closed() {
         this.nativeCreativeCursor = false;
+        this.rejectedCreativeCarries.clear();
         this.inventoryOpenRequested = false;
         this.openInventoryIfNeeded();
     }
@@ -176,7 +197,11 @@ public final class ItemStackRequestTracker extends StoredObject {
             this.destroyCreativeCursor();
         }
         inventory.markPendingClose(container);
-        final Runnable close = () -> PacketFactory.sendBedrockContainerClose(this.user(), container.containerId(), ContainerType.NONE);
+        final Runnable close = () -> {
+            if (inventory.getPendingCloseContainer() == container) {
+                PacketFactory.sendBedrockContainerClose(this.user(), container.containerId(), ContainerType.NONE);
+            }
+        };
         if (this.state.isPending()) {
             this.settled.add(close);
         } else {
@@ -192,7 +217,7 @@ public final class ItemStackRequestTracker extends StoredObject {
             return;
         }
         if (javaSlot == -1) {
-            this.endCreativeTick();
+            this.flushCreativeDrop();
             if (!requested.isEmpty()) {
                 this.pendingCreativeDrop = requested.copy();
             }
@@ -211,7 +236,7 @@ public final class ItemStackRequestTracker extends StoredObject {
                 this.submitPlan(plan);
                 return;
             }
-            this.endCreativeTick();
+            this.flushCreativeDrop();
         }
         if (destination != null) {
             final InventoryTracker inventory = this.user().get(InventoryTracker.class);
@@ -219,6 +244,11 @@ public final class ItemStackRequestTracker extends StoredObject {
             final BedrockItem before = this.projected(destination);
             final BedrockItem carried = this.projected(cursor);
             final ItemRewriter items = this.user().get(ItemRewriter.class);
+            if (carried.isEmpty() && !requested.isEmpty() && this.rejectedCreativeCarries.stream()
+                .anyMatch(item -> this.creative.sameItem(item, requested))) {
+                this.unsupported("Placement continues a rejected native pickup; reopen the creative screen");
+                return;
+            }
             final boolean same = !before.isEmpty() && !requested.isEmpty()
                 && this.creative.sameItem(items.javaItem(before.copy()), requested);
             final int remaining = requested.isEmpty() ? 0 : same ? requested.amount() : -1;
@@ -256,6 +286,53 @@ public final class ItemStackRequestTracker extends StoredObject {
     }
 
     public void endCreativeTick() {
+        if (this.creativeSlots.isEmpty()) {
+            this.flushCreativeDrop();
+            return;
+        }
+        final Deque<CreativeSlot> updates = new ArrayDeque<>(this.creativeSlots);
+        this.creativeSlots.clear();
+        this.withInventory(() -> {
+            while (!updates.isEmpty()) {
+                final CreativeSlot first = updates.removeFirst();
+                if (!updates.isEmpty() && this.applyCreativeExchange(first, updates.getFirst())) {
+                    updates.removeFirst();
+                } else {
+                    this.applyCreativeSlot(first.index, first.item);
+                }
+            }
+            this.flushCreativeDrop();
+        });
+    }
+
+    private boolean applyCreativeExchange(final CreativeSlot first, final CreativeSlot second) {
+        final Slot left = this.javaInventorySlot(first.index);
+        final Slot right = this.javaInventorySlot(second.index);
+        final Slot cursor = this.slot(this.user().get(InventoryTracker.class).getHudContainer(), 0);
+        if (left == null || right == null || left.equals(right) || !this.projected(cursor).isEmpty() || this.pendingCreativeDrop != null) {
+            return false;
+        }
+        final ItemRewriter items = this.user().get(ItemRewriter.class);
+        final boolean leftMatches = this.sameCreativeStack(items.javaItem(this.projected(left)), second.item);
+        final boolean rightMatches = this.sameCreativeStack(items.javaItem(this.projected(right)), first.item);
+        if (!leftMatches && !rightMatches) {
+            return false;
+        }
+        if (!leftMatches || !rightMatches) {
+            this.unsupported("Native exchange no longer matches both authoritative stacks");
+            return true;
+        }
+        final InventoryClickPlan<Slot> plan = new InventoryClickPlan<>(this::projected, this::capacity);
+        plan.swap(left, right);
+        this.submitPlan(plan);
+        return true;
+    }
+
+    private boolean sameCreativeStack(final Item before, final Item after) {
+        return before.isEmpty() && after.isEmpty() || before.amount() == after.amount() && this.creative.sameItem(before, after);
+    }
+
+    private void flushCreativeDrop() {
         // Native inventory Q emits -1 plus a changed source slot synchronously.
         // A lone -1 at the game's tick boundary is a catalog drop, not a removal.
         if (this.pendingCreativeDrop != null) {
@@ -532,7 +609,7 @@ public final class ItemStackRequestTracker extends StoredObject {
 
     private void submitPlan(final InventoryClickPlan<Slot> plan) {
         if (plan.operations().isEmpty()) {
-            this.resync();
+            this.unsupported("Inventory operation has no valid transfer");
             return;
         }
         this.submit(plan.after(), Set.of(), id -> {
@@ -552,7 +629,43 @@ public final class ItemStackRequestTracker extends StoredObject {
 
     public void unsupported(final String reason) {
         ViaBedrock.getPlatform().getLogger().warning("Unsupported inventory operation: " + reason);
+        if (this.nativeCreativeCursor) {
+            final BedrockItem carried = this.projected(this.slot(this.user().get(InventoryTracker.class).getHudContainer(), 0));
+            if (!carried.isEmpty()) {
+                this.rejectedCreativeCarries.add(this.user().get(ItemRewriter.class).javaItem(carried));
+            }
+            this.resyncNativeFailure();
+        } else {
+            this.resync();
+        }
+    }
+
+    private void resyncNativeFailure() {
+        final boolean nativeCursor = this.nativeCreativeCursor;
+        this.nativeCreativeCursor = false;
         this.resync();
+        final InventoryTracker inventory = this.user().get(InventoryTracker.class);
+        final PacketWrapper cursor = PacketWrapper.create(com.viaversion.viaversion.protocols.v26_2to26_3.packet.ClientboundPackets26_3.SET_CURSOR_ITEM, this.user());
+        cursor.write(com.viaversion.viaversion.api.type.types.version.VersionedTypes.V26_3.item, inventory.getHudContainer().getJavaItem(0));
+        cursor.send(BedrockProtocol.class);
+        this.nativeCreativeCursor = nativeCursor;
+    }
+
+    private void discardRejected(final Set<Integer> rejected) {
+        boolean cursorRejected = false;
+        for (int id : rejected) {
+            this.actions.remove(id);
+            final Item carried = this.nativeCursorChanges.remove(id);
+            if (carried != null) {
+                if (!carried.isEmpty()) {
+                    this.rejectedCreativeCarries.add(carried);
+                }
+                cursorRejected = true;
+            }
+        }
+        if (cursorRejected) {
+            this.resyncNativeFailure();
+        }
     }
 
     public Slot slot(final Container container, final int index) {
@@ -566,13 +679,28 @@ public final class ItemStackRequestTracker extends StoredObject {
     public void submit(final Map<Slot, BedrockItem> after, final Set<Slot> reads, final IntFunction<List<ItemStackRequest.Action>> actions) {
         final var request = this.state.submit(after, reads);
         this.actions.put(request.id(), actions);
+        final Slot cursor = this.slot(this.user().get(InventoryTracker.class).getHudContainer(), 0);
+        if (this.nativeCreativeCursor && request.after().containsKey(cursor)) {
+            final BedrockItem afterCursor = request.after().get(cursor);
+            final BedrockItem carried = afterCursor.isEmpty() ? request.before().get(cursor) : afterCursor;
+            this.nativeCursorChanges.put(request.id(), this.user().get(ItemRewriter.class).javaItem(carried.copy()));
+        }
         this.flush();
     }
 
     private void flush() {
         final var ready = this.state.takeReady();
-        ready.rejected().forEach(this.actions::remove);
+        this.discardRejected(ready.rejected());
         for (var request : ready.requests()) {
+            if (this.state.get(request.id()) == null) {
+                continue;
+            }
+            final Container current = this.user().get(InventoryTracker.class).getCurrentContainer();
+            if (request.before().keySet().stream().anyMatch(slot -> slot.container.type() == ContainerType.CONTAINER && slot.container != current)) {
+                this.discardRejected(this.state.reject(request.id()));
+                this.resync();
+                continue;
+            }
             try {
                 final PacketWrapper packet = PacketWrapper.create(ServerboundBedrockPackets.ITEM_STACK_REQUEST, this.user());
                 final ItemStackRequest wire = new ItemStackRequest(request.id(), this.actions.get(request.id()).apply(request.id()));
@@ -586,7 +714,7 @@ public final class ItemStackRequestTracker extends StoredObject {
                     ViaBedrock.getPlatform().getLogger().info("INVENTORY_REQUEST time=" + System.nanoTime() + " request=" + wire);
                 }
             } catch (final RuntimeException error) {
-                this.state.reject(request.id()).forEach(this.actions::remove);
+                this.discardRejected(this.state.reject(request.id()));
                 this.resync();
                 throw error;
             }
@@ -606,7 +734,7 @@ public final class ItemStackRequestTracker extends StoredObject {
             return;
         }
         if (response.result() != ItemStackNetResult.Success.getValue()) {
-            this.state.reject(response.requestId()).forEach(this.actions::remove);
+            this.discardRejected(this.state.reject(response.requestId()));
             ViaBedrock.getPlatform().getLogger().warning("Item stack request " + response.requestId() + " rejected: "
                 + ItemStackNetResult.getByValue(response.result()) + " (" + response.result() + ")");
         } else {
@@ -649,6 +777,7 @@ public final class ItemStackRequestTracker extends StoredObject {
                 throw new IllegalStateException("Received a response for an unsent inventory operation");
             }
             this.actions.remove(response.requestId());
+            this.nativeCursorChanges.remove(response.requestId());
         }
         if (Boolean.getBoolean("viabedrock.traceInventory")) {
             ViaBedrock.getPlatform().getLogger().info("INVENTORY_RESPONSE time=" + System.nanoTime() + " response=" + response);
@@ -707,6 +836,9 @@ public final class ItemStackRequestTracker extends StoredObject {
         if (open != null && open.size() != 0 && open != inventory.getInventoryContainer() && open.type() != ContainerType.INVENTORY) {
             PacketFactory.sendJavaContainerSetContent(this.user(), open);
         }
+    }
+
+    private record CreativeSlot(int index, Item item) {
     }
 
     public record Slot(Container container, int index) {

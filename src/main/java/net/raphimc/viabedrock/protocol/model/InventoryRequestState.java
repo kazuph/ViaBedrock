@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /** Pending operations overlay the server's containers without mutating them. */
 public final class InventoryRequestState<K> {
@@ -132,6 +133,16 @@ public final class InventoryRequestState<K> {
         }
         rejected.forEach(this.pending::remove);
         rejected.forEach(this.sent::remove);
+        return rejected;
+    }
+
+    public Set<Integer> invalidateUnsent(final Predicate<K> invalid) {
+        final Set<Integer> rejected = new LinkedHashSet<>();
+        for (Request<K> request : new ArrayList<>(this.pending.values())) {
+            if (!this.sent.containsKey(request.id) && request.before.keySet().stream().anyMatch(invalid)) {
+                rejected.addAll(this.reject(request.id));
+            }
+        }
         return rejected;
     }
 

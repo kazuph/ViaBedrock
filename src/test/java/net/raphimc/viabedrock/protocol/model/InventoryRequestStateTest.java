@@ -95,4 +95,22 @@ public class InventoryRequestStateTest {
         assertTrue(state.takeReady().requests().isEmpty());
     }
 
+    @Test
+    public void closingMenuCancelsOnlyItsUnsentOperationsAndTheirDependents() {
+        final Map<String, BedrockItem> confirmed = new HashMap<>(Map.of("chest", stack(32, 10), "cursor", BedrockItem.empty(), "player", stack(16, 20)));
+        final var state = new InventoryRequestState<String>(confirmed::get, confirmed::put);
+        final var sent = state.submit(Map.of("chest", stack(16, 10), "cursor", stack(16, 0)), Set.of());
+        state.takeReady();
+        final var queued = state.submit(Map.of("chest", BedrockItem.empty(), "cursor", stack(32, 0)), Set.of());
+        final var dependent = state.submit(Map.of("cursor", BedrockItem.empty()), Set.of());
+        final var independent = state.submit(Map.of("player", stack(15, 20)), Set.of());
+        assertEquals(Set.of(queued.id(), dependent.id()), state.invalidateUnsent("chest"::equals));
+        assertNotNull(state.get(sent.id()));
+        assertNotNull(state.get(independent.id()));
+        assertTrue(state.complete(sent.id(), Map.of("chest", stack(16, 11), "cursor", stack(16, 12))));
+        assertEquals(independent.id(), state.takeReady().requests().get(0).id());
+        assertEquals(16, state.projected("chest").amount());
+        assertEquals(16, state.projected("cursor").amount());
+    }
+
 }

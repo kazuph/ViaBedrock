@@ -118,6 +118,7 @@ public class InventoryTracker extends StoredObject {
     }
 
     public void setCurrentContainerClosed(final boolean serverInitiated) {
+        this.user().get(ItemStackRequestTracker.class).invalidateContainer(serverInitiated ? this.currentContainer : this.pendingCloseContainer);
         if (serverInitiated) {
             PacketFactory.sendBedrockContainerClose(this.user(), this.currentContainer.containerId(), ContainerType.NONE);
         }
@@ -212,6 +213,7 @@ public class InventoryTracker extends StoredObject {
     }
 
     private void forceCloseCurrentContainer() {
+        this.user().get(ItemStackRequestTracker.class).invalidateContainer(this.currentContainer);
         this.markPendingClose(this.currentContainer);
         PacketFactory.sendJavaContainerClose(this.user(), this.pendingCloseContainer.javaContainerId());
         PacketFactory.sendBedrockContainerClose(this.user(), this.pendingCloseContainer.containerId(), ContainerType.NONE);

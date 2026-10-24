@@ -1,6 +1,9 @@
 package net.raphimc.viabedrock.protocol.model;
 
 import org.junit.Test;
+import com.viaversion.nbt.tag.CompoundTag;
+import com.viaversion.nbt.tag.IntTag;
+import com.viaversion.nbt.tag.StringTag;
 
 import java.util.HashMap;
 import java.util.List;
@@ -91,6 +94,28 @@ public class InventoryClickPlanTest {
         assertTrue(plan.item("cursor").isEmpty());
         final var drop = (InventoryClickPlan.Drop<String>) plan.operations().get(plan.operations().size() - 1);
         assertEquals(63, drop.count());
+    }
+
+    @Test
+    public void numberSwapPreservesDamageNameAndNetworkIdentity() {
+        final BedrockItem sword = item(300, 1);
+        sword.setNetId(41);
+        final CompoundTag tag = new CompoundTag();
+        tag.put("Damage", new IntTag(17));
+        final CompoundTag display = new CompoundTag();
+        display.put("Name", new StringTag("Named sword"));
+        tag.put("display", display);
+        sword.setTag(tag);
+        final BedrockItem glass = item(20, 32);
+        glass.setNetId(42);
+        final var plan = plan(Map.of("main", sword, "hotbar", glass));
+        plan.swap("main", "hotbar");
+        assertEquals(1, plan.operations().size());
+        assertTrue(plan.operations().get(0) instanceof InventoryClickPlan.Swap<?>);
+        assertEquals(tag, plan.item("hotbar").tag());
+        assertEquals(Integer.valueOf(41), plan.item("hotbar").netId());
+        assertEquals(Integer.valueOf(42), plan.item("main").netId());
+        assertEquals(32, plan.item("main").amount());
     }
 
 }
