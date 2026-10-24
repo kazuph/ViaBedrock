@@ -1,0 +1,12 @@
+expect-spawn 30
+fixture-creative
+fixture 239.5 76 -81.5 30
+fixture-clear glass
+fixture-hotbar 8 glass 32
+expect 0 44 231 32 10
+native-named-swaps
+count-server book 1
+count-server glass 32
+save-inventory /tmp/vb-native-named-persisted.bin
+close 0
+snapshot

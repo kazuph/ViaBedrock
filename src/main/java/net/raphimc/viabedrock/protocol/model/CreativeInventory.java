@@ -9,6 +9,9 @@ import com.viaversion.viaversion.api.minecraft.data.StructuredData;
 import com.viaversion.viaversion.api.minecraft.data.StructuredDataKey;
 import com.viaversion.viaversion.api.minecraft.item.Item;
 import io.netty.buffer.ByteBuf;
+import com.viaversion.nbt.tag.Tag;
+import com.viaversion.viaversion.libs.mcstructs.text.utils.TextUtils;
+import net.raphimc.viabedrock.protocol.data.ProtocolConstants;
 import io.netty.buffer.Unpooled;
 
 import java.nio.ByteBuffer;
@@ -54,14 +57,41 @@ public final class CreativeInventory {
     }
 
     public boolean sameItem(final Item left, final Item right) {
-        return this.key(left).equals(this.key(right));
+        if (!this.key(left, false).equals(this.key(right, false))) {
+            return false;
+        }
+        final var leftName = left.dataContainer().getData(StructuredDataKey.CUSTOM_NAME);
+        final var rightName = right.dataContainer().getData(StructuredDataKey.CUSTOM_NAME);
+        if (leftName == null || rightName == null) {
+            return leftName == rightName;
+        }
+        if (leftName.isEmpty() || rightName.isEmpty()) {
+            return leftName.isEmpty() && rightName.isEmpty();
+        }
+        return normalizedName(leftName.value()).equals(normalizedName(rightName.value()));
+    }
+
+    private static Tag normalizedName(final Tag tag) {
+        final var text = ProtocolConstants.JAVA_TEXT_COMPONENT_SERIALIZER.deserializeNbtTree(tag);
+        TextUtils.iterateAll(text, component -> {
+            final var color = component.getStyle().getColor();
+            if (color != null) {
+                component.getStyle().setColor(color.getRgbValue());
+            }
+        });
+        return ProtocolConstants.JAVA_TEXT_COMPONENT_SERIALIZER.serializeNbtTree(text);
     }
 
     private ByteBuffer key(final Item item) {
+        return this.key(item, true);
+    }
+
+    private ByteBuffer key(final Item item, final boolean includeName) {
         final ByteBuf buffer = Unpooled.buffer();
         try {
             buffer.writeInt(item.identifier());
             final var components = item.dataContainer().data().entrySet().stream()
+                .filter(entry -> includeName || entry.getKey() != StructuredDataKey.CUSTOM_NAME)
                 .filter(entry -> entry.getKey() != StructuredDataKey.DAMAGE || entry.getValue().isEmpty()
                     || !java.util.Objects.equals(entry.getValue().value(), this.defaultDamage.get(item.identifier())))
                 .map(Map.Entry::getValue).sorted(Comparator.comparingInt(StructuredData::id)).toList();

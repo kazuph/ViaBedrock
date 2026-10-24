@@ -1,0 +1,26 @@
+expect-spawn 30
+fixture-creative
+fixture-reset
+fixture 239.5 76 -81.5 30
+fixture-slot 2 stone 32
+expect 0 11 1 32 10
+# Open the Bedrock inventory with a no-op catalog image before racing the real clear.
+creative 11 1 32
+chat VB-native-reject-ready
+expect-chat VB-native-reject-ready 10
+remember-item 11
+mark-cursor-updates
+fixture-clear-race stone 200
+native-stale-pickup 11
+expect-rejected -1 10
+expect-cursor-update 10
+expect-cursor 0 0 10
+expect 0 11 0 0 10
+# Replay the stale placement image, even after receiving rollback.
+creative 12 1 32
+chat VB-native-reject-done
+expect-chat VB-native-reject-done 10
+expect 0 12 0 0 10
+count-server stone 0
+snapshot
+close 0

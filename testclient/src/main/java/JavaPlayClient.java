@@ -72,6 +72,8 @@ public final class JavaPlayClient extends SessionAdapter {
     private int revision;
     private int cursorUpdates;
     private int cursorUpdateMarker;
+    private ItemStack rememberedItem;
+    private ItemStack rememberedSwapLeft, rememberedSwapRight;
     private boolean closed;
     private String username;
     private double playerX, playerY, playerZ;
@@ -225,6 +227,12 @@ public final class JavaPlayClient extends SessionAdapter {
                     log("chat", message);
                     changed.notifyAll();
                 }
+            } else if (packet instanceof ClientboundContainerClosePacket close) {
+                synchronized (changed) {
+                    if (openWindow == close.getContainerId()) openWindow = -1;
+                    log("server_close", close);
+                    changed.notifyAll();
+                }
             } else if (packet instanceof ClientboundOpenScreenPacket open) {
                 synchronized (changed) {
                     openWindow = open.getContainerId();
@@ -320,7 +328,7 @@ public final class JavaPlayClient extends SessionAdapter {
                 log("PASS", command);
             }
             case "count-server" -> {
-                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log", "diamond_sword").contains(args[1])) throw new IllegalArgumentException(command);
+                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log", "diamond_sword", "book").contains(args[1])) throw new IllegalArgumentException(command);
                 Process fence = new ProcessBuilder("ssh", "pc", "docker logs --timestamps --tail 1 minecraft-edu-test").redirectErrorStream(true).start();
                 String lastLine = new String(fence.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).replaceFirst("[\\r\\n]+$", "");
                 if (!fence.waitFor(30, TimeUnit.SECONDS) || fence.exitValue() != 0 || lastLine.isEmpty()) throw new IllegalStateException("No copy-server log watermark");
@@ -344,7 +352,7 @@ public final class JavaPlayClient extends SessionAdapter {
                             throw new IllegalStateException("Server log ended before item count");
                         } catch (Exception error) { throw new java.util.concurrent.CompletionException(error); }
                     });
-                    copyConsole("clear ViaJavaTest " + args[1] + " 0 0");
+                    copyConsole("clear ViaJavaTest " + args[1] + " " + (args.length > 3 ? Integer.parseInt(args[3]) : 0) + " 0");
                     int actual = result.get(30, TimeUnit.SECONDS);
                     if (actual != Integer.parseInt(args[2])) throw new AssertionError(command + "; actual=" + actual);
                     log("PASS", command);
@@ -355,11 +363,11 @@ public final class JavaPlayClient extends SessionAdapter {
                 copyConsole("clear ViaJavaTest");
             }
             case "fixture-clear" -> {
-                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log", "diamond_sword").contains(args[1])) throw new IllegalArgumentException(command);
+                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log", "diamond_sword", "book").contains(args[1])) throw new IllegalArgumentException(command);
                 copyConsole("clear ViaJavaTest " + args[1]);
             }
             case "fixture-clear-race" -> {
-                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log", "diamond_sword").contains(args[1])) throw new IllegalArgumentException(command);
+                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log", "diamond_sword", "book").contains(args[1])) throw new IllegalArgumentException(command);
                 long delay = Long.parseLong(args[2]);
                 if (delay < 0) throw new IllegalArgumentException(command);
                 consoleCommands.add(new ProcessBuilder("ssh", "pc", "docker exec minecraft-edu-test send-command 'clear ViaJavaTest " + args[1] + "'").inheritIO().start());
@@ -510,6 +518,26 @@ public final class JavaPlayClient extends SessionAdapter {
                 spawned.get(Long.parseLong(args[1]), TimeUnit.SECONDS);
                 log("PASS", command);
             }
+            case "expect-rejected" -> {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[2]));
+                try (var watcher = responseLog.getFileSystem().newWatchService()) {
+                    responseLog.getParent().register(watcher, StandardWatchEventKinds.ENTRY_MODIFY);
+                    while (true) {
+                        byte[] bytes = Files.readAllBytes(responseLog);
+                        String received = new String(bytes, responseLogOffset, bytes.length - responseLogOffset, java.nio.charset.StandardCharsets.UTF_8);
+                        var match = java.util.regex.Pattern.compile("response=ItemStackResponse\\[result=([0-9]+), requestId=" + Integer.parseInt(args[1]) + ",").matcher(received);
+                        if (match.find()) {
+                            if (Integer.parseInt(match.group(1)) == 0) throw new AssertionError("Race did not cause a real server rejection");
+                            log("PASS", command + "; result=" + match.group(1));
+                            break;
+                        }
+                        long remaining = deadline - System.nanoTime();
+                        if (remaining <= 0) throw new AssertionError("No real server rejection observed");
+                        var key = watcher.poll(remaining, TimeUnit.NANOSECONDS);
+                        if (key != null) { key.pollEvents(); key.reset(); }
+                    }
+                }
+            }
             case "expect-ack" -> {
                 if (responseLog == null) throw new IllegalStateException("The fourth argument must name the development proxy trace log");
                 String expected = "response=ItemStackResponse[result=" + Integer.parseInt(args[2]) + ", requestId=" + Integer.parseInt(args[1]) + ",";
@@ -532,6 +560,44 @@ public final class JavaPlayClient extends SessionAdapter {
             case "snapshot" -> {
                 synchronized (changed) { log("snapshot", Map.of("containers", containers, "cursor", String.valueOf(cursor))); }
             }
+            case "native-named-swaps" -> {
+                int source = -1;
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                synchronized (changed) {
+                    while (source < 0) {
+                        ItemStack[] items = containers.get(0);
+                        if (items != null) for (int i = 9; i < 45; i++) {
+                            ItemStack item = items[i];
+                            if (item != null && item.getDataComponentsPatch() != null && item.getDataComponentsPatch().get(DataComponentTypes.CUSTOM_NAME) != null) source = i;
+                        }
+                        if (source >= 0) break;
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("No real server-provided named item");
+                        TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                    }
+                    log("named_fixture", Map.of("slot",source,"item",containers.get(0)[source]));
+                }
+                command("save-inventory /tmp/vb-native-named-before.bin");
+                command("native-swap " + source + " 44");
+                command("expect-ack -1 0 10");
+                command("expect 0 " + source + " 231 32 10");
+                command("native-swap " + source + " 44");
+                command("expect-ack -3 0 10");
+                command("expect-inventory /tmp/vb-native-named-before.bin 10");
+                log("PASS", command);
+            }
+            case "remember-swap" -> {
+                synchronized (changed) {
+                    rememberedSwapLeft = containers.get(0)[Integer.parseInt(args[1])];
+                    rememberedSwapRight = containers.get(0)[Integer.parseInt(args[2])];
+                }
+            }
+            case "native-swap-saved" -> {
+                synchronized (session) {
+                    session.send(new ServerboundSetCreativeModeSlotPacket(Short.parseShort(args[1]), rememberedSwapRight));
+                    session.send(new ServerboundSetCreativeModeSlotPacket(Short.parseShort(args[2]), rememberedSwapLeft));
+                }
+            }
             case "native-swap" -> {
                 int left = Integer.parseInt(args[1]), right = Integer.parseInt(args[2]);
                 ItemStack a, b;
@@ -540,6 +606,25 @@ public final class JavaPlayClient extends SessionAdapter {
                     session.send(new ServerboundSetCreativeModeSlotPacket((short) left, b));
                     session.send(new ServerboundSetCreativeModeSlotPacket((short) right, a));
                 }
+            }
+            case "remember-item" -> {
+                synchronized (changed) { rememberedItem = containers.get(0)[Integer.parseInt(args[1])]; }
+                if (rememberedItem == null) throw new AssertionError("No item to remember");
+            }
+            case "expect-cursor-update" -> {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[1]));
+                synchronized (changed) {
+                    while (cursorUpdates <= cursorUpdateMarker) {
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("Native cursor was not resynchronized");
+                        TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                    }
+                }
+                log("PASS", command);
+            }
+            case "native-stale-pickup" -> {
+                synchronized (changed) { cursor = rememberedItem; }
+                session.send(new ServerboundSetCreativeModeSlotPacket(Short.parseShort(args[1]), null));
             }
             case "native-pickup" -> {
                 int source = Integer.parseInt(args[1]);
@@ -595,6 +680,50 @@ public final class JavaPlayClient extends SessionAdapter {
                 }
                 log("PASS", command);
             }
+            case "burst-swaps" -> {
+                int count = Integer.parseInt(args[1]);
+                for (int i = 0; i < count; i++) command("click open 0 2 1");
+                // Player-to-player number swap is independent of the chest and its cursor.
+                command("click open 28 2 2");
+            }
+            case "fixture-creative" -> {
+                if (!username.equals("ViaJavaTest")) throw new IllegalArgumentException(command);
+                copyConsole("gamemode creative ViaJavaTest");
+            }
+            case "fixture-close-race" -> {
+                if (!username.equals("ViaJavaTest") || !Set.of("distance", "server").contains(args[1])) throw new IllegalArgumentException(command);
+                String action = args[1].equals("distance") ? "tp ViaJavaTest 244.5 76 -84.5" : "clone 240 76 -80 240 76 -80 240 76 -80 replace force";
+                consoleCommands.add(new ProcessBuilder("ssh", "pc", "docker exec minecraft-edu-test send-command '" + action + "'").inheritIO().start());
+            }
+            case "expect-closed" -> {
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[1]));
+                synchronized (changed) {
+                    while (openWindow != -1) {
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("Menu was not forcibly closed");
+                        TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                    }
+                }
+                log("PASS", command);
+            }
+            case "expect-invalidated" -> {
+                byte[] bytes = Files.readAllBytes(responseLog);
+                String text = new String(bytes, responseLogOffset, bytes.length - responseLogOffset, java.nio.charset.StandardCharsets.UTF_8);
+                var invalidated = java.util.regex.Pattern.compile("INVENTORY_INVALIDATED container=[0-9]+ requests=\\[-[0-9]+").matcher(text);
+                if (!invalidated.find()) throw new AssertionError("No queued menu operation invalidated");
+                String afterClose = text.substring(invalidated.start());
+                if (afterClose.lines().anyMatch(line -> line.contains("INVENTORY_REQUEST") && line.contains("LevelEntityContainer"))) throw new AssertionError("Old chest operation was sent after invalidation");
+                log("PASS", command);
+            }
+            case "save-total", "expect-total" -> {
+                int chestSize = Integer.parseInt(args[2]);
+                synchronized (changed) {
+                    byte[] actual = totalBytes(chestSize);
+                    if (args[0].equals("save-total")) Files.write(Path.of(args[1]), actual);
+                    else if (!Arrays.equals(Files.readAllBytes(Path.of(args[1])), actual)) throw new AssertionError("Items, components or total changed across forced close");
+                }
+                log("PASS", command);
+            }
             case "click" -> {
                 int window = window(args[1]), slot = Integer.parseInt(args[2]);
                 ContainerActionType type = ContainerActionType.values()[Integer.parseInt(args[3])];
@@ -626,6 +755,24 @@ public final class JavaPlayClient extends SessionAdapter {
             }
             default -> throw new UnsupportedOperationException(command);
         }
+    }
+
+    private byte[] totalBytes(int chestSize) {
+        List<String> encoded = new ArrayList<>();
+        List<ItemStack> all = new ArrayList<>(Arrays.asList(containers.get(0)));
+        all.addAll(Arrays.asList(containers.get(openWindow)).subList(0, chestSize));
+        all.add(cursor);
+        for (ItemStack item : all) {
+            if (item == null || item.getAmount() == 0) continue;
+            var buffer = Unpooled.buffer();
+            try {
+                MinecraftTypes.writeOptionalItemStack(buffer, item, true);
+                byte[] bytes = new byte[buffer.readableBytes()];buffer.readBytes(bytes);
+                encoded.add(HexFormat.of().formatHex(bytes));
+            } finally { buffer.release(); }
+        }
+        Collections.sort(encoded);
+        return String.join("\n", encoded).getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private byte[] inventoryBytes() {

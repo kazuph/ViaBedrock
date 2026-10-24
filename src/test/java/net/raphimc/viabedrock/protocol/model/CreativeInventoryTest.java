@@ -11,6 +11,7 @@ import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import net.raphimc.viabedrock.protocol.types.item.BedrockItemType;
 import org.junit.Test;
+import com.viaversion.nbt.tag.CompoundTag;
 
 import java.util.Map;
 
@@ -70,6 +71,25 @@ public class CreativeInventoryTest {
         } finally {
             bytes.release();
         }
+    }
+
+    @Test
+    public void nativeNamedItemsCompareTextSemanticsWithoutChangingCatalogMatching() {
+        final CreativeInventory inventory = new CreativeInventory(Map.of());
+        final CompoundTag hex = new CompoundTag();
+        hex.putString("text", "Named book");
+        hex.putString("color", "#ff55ff");
+        hex.putByte("bold", (byte) 1);
+        final CompoundTag named = hex.copy();
+        named.putString("color", "light_purple");
+        final Item left = new StructuredItem(1146, 1, new StructuredDataContainer(Map.of(
+            StructuredDataKey.CUSTOM_NAME, StructuredData.of(StructuredDataKey.CUSTOM_NAME, hex, 6))));
+        final Item right = new StructuredItem(1146, 1, new StructuredDataContainer(Map.of(
+            StructuredDataKey.CUSTOM_NAME, StructuredData.of(StructuredDataKey.CUSTOM_NAME, named, 6))));
+        assertTrue(inventory.sameItem(left, right));
+        named.putString("text", "Different book");
+        assertFalse(inventory.sameItem(left, right));
+        assertNull(inventory.match(left));
     }
 
 }

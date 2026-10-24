@@ -1,0 +1,4 @@
+expect-spawn 30
+expect-inventory /tmp/vb-native-named-persisted.bin 10
+count-server book 1
+snapshot

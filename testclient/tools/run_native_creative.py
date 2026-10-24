@@ -9,12 +9,12 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--java', type=Path, required=True)
 parser.add_argument('--trace', type=Path, required=True)
 parser.add_argument('--evidence', type=Path, required=True)
-parser.add_argument('--port', type=int, default=25574)
+parser.add_argument('--port', type=int, default=25575)
 parser.add_argument('--cases', nargs='+', choices=('pickup', 'swap', 'half', 'trash', 'close-carried', 'tabs', 'close-race', 'drop-q', 'drop-ctrl-q', 'drop-q-partial'),
                     default=('pickup', 'swap', 'half', 'trash', 'close-carried', 'tabs', 'close-race'))
 args = parser.parse_args()
-if args.port != 25574:
-    parser.error('Use the isolated native-creative proxy on 25574; human proxies are reserved')
+if args.port != 25575:
+    parser.error('Use the isolated native-creative proxy on 25575; human proxies are reserved')
 args.evidence.mkdir(parents=True, exist_ok=True)
 results = []
 for name in args.cases:

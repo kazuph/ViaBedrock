@@ -58,6 +58,7 @@ public final class ItemStackRequestTracker extends StoredObject {
     private final Deque<Runnable> waitingForInventory = new ArrayDeque<>();
     private boolean inventoryOpenRequested;
     private boolean nativeCreativeCursor;
+    private boolean rejectedNativePickup;
     private Item pendingCreativeDrop;
     private final List<CreativeSlot> creativeSlots = new ArrayList<>();
     private final Map<Integer, Item> nativeCursorChanges = new HashMap<>();
@@ -171,6 +172,7 @@ public final class ItemStackRequestTracker extends StoredObject {
     public void closed() {
         this.nativeCreativeCursor = false;
         this.rejectedCreativeCarries.clear();
+        this.rejectedNativePickup = false;
         this.inventoryOpenRequested = false;
         this.openInventoryIfNeeded();
     }
@@ -244,9 +246,14 @@ public final class ItemStackRequestTracker extends StoredObject {
             final BedrockItem before = this.projected(destination);
             final BedrockItem carried = this.projected(cursor);
             final ItemRewriter items = this.user().get(ItemRewriter.class);
-            if (carried.isEmpty() && !requested.isEmpty() && this.rejectedCreativeCarries.stream()
-                .anyMatch(item -> this.creative.sameItem(item, requested))) {
+            if (carried.isEmpty() && !requested.isEmpty() && (this.rejectedNativePickup || this.rejectedCreativeCarries.stream()
+                .anyMatch(item -> this.creative.sameItem(item, requested)))) {
                 this.unsupported("Placement continues a rejected native pickup; reopen the creative screen");
+                return;
+            }
+            if (before.isEmpty() && requested.isEmpty() && carried.isEmpty()) {
+                this.rejectedNativePickup = true;
+                this.unsupported("Native pickup refers to an empty authoritative slot; reopen the creative screen");
                 return;
             }
             final boolean same = !before.isEmpty() && !requested.isEmpty()
@@ -257,6 +264,7 @@ public final class ItemStackRequestTracker extends StoredObject {
                     || carried.amount() + before.amount() - remaining > this.capacity(cursor, before))) {
                     this.destroyCreativeCursor();
                 }
+                this.rejectedNativePickup = false;
                 final InventoryClickPlan<Slot> plan = new InventoryClickPlan<>(this::projected, this::capacity);
                 plan.transfer(destination, cursor, before.amount() - remaining);
                 this.submitPlan(plan);

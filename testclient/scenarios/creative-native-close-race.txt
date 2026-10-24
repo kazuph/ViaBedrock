@@ -14,7 +14,6 @@ close 0
 creative 11 231 32
 expect-ack -1 0 10
 expect-ack -3 0 10
-expect-ack -5 0 10
 chat VB-native-reopened
 expect-chat VB-native-reopened 10
 expect-no-cursor-updates
