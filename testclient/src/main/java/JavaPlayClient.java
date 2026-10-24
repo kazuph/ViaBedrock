@@ -560,6 +560,29 @@ public final class JavaPlayClient extends SessionAdapter {
             case "snapshot" -> {
                 synchronized (changed) { log("snapshot", Map.of("containers", containers, "cursor", String.valueOf(cursor))); }
             }
+            case "native-keep-book" -> {
+                int source = -1;
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                synchronized (changed) {
+                    while (source < 0) {
+                        ItemStack[] items = containers.get(0);
+                        if (items != null) for (int i = 9; i < 45; i++) {
+                            ItemStack item = items[i];
+                            if (item != null && item.getId() == 1146 && item.getDataComponentsPatch() != null
+                                && item.getDataComponentsPatch().get(DataComponentTypes.CUSTOM_NAME) != null) source = i;
+                        }
+                        if (source >= 0) break;
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("No real server quiz book");
+                        TimeUnit.NANOSECONDS.timedWait(changed, remaining);
+                    }
+                }
+                if (source != 44) {
+                    command("native-swap " + source + " 44");
+                    command("expect-ack -1 0 10");
+                    command("expect 0 44 1146 1 10");
+                }
+            }
             case "native-named-swaps" -> {
                 int source = -1;
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
@@ -596,6 +619,10 @@ public final class JavaPlayClient extends SessionAdapter {
                 synchronized (session) {
                     session.send(new ServerboundSetCreativeModeSlotPacket(Short.parseShort(args[1]), rememberedSwapRight));
                     session.send(new ServerboundSetCreativeModeSlotPacket(Short.parseShort(args[2]), rememberedSwapLeft));
+                    if (args.length > 3) {
+                        session.send(new ServerboundSetCreativeModeSlotPacket(Short.parseShort(args[3]),
+                            new ItemStack(Integer.parseInt(args[4]), Integer.parseInt(args[5]))));
+                    }
                 }
             }
             case "native-images" -> {

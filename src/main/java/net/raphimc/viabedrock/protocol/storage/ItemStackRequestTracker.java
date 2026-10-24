@@ -38,6 +38,7 @@ import net.raphimc.viabedrock.protocol.types.inventory.ItemStackRequestType;
 import net.raphimc.viabedrock.protocol.rewriter.ItemRewriter;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -302,42 +303,115 @@ public final class ItemStackRequestTracker extends StoredObject {
         this.creativeSlots.clear();
         this.withInventory(() -> {
             while (!updates.isEmpty()) {
-                final CreativeSlot first = updates.removeFirst();
-                if (!updates.isEmpty() && this.applyCreativeExchange(first, updates.getFirst())) {
-                    updates.removeFirst();
-                } else {
-                    this.applyCreativeSlot(first.index, first.item);
+                final List<CreativeSlot> batch = new ArrayList<>();
+                final Set<Integer> indices = new LinkedHashSet<>();
+                while (!updates.isEmpty() && updates.getFirst().index != -1 && indices.add(updates.getFirst().index)) {
+                    batch.add(updates.removeFirst());
+                }
+                if (batch.isEmpty()) {
+                    final CreativeSlot drop = updates.removeFirst();
+                    this.applyCreativeSlot(drop.index, drop.item);
+                } else if (!this.applyCreativeBatch(batch)) {
+                    for (CreativeSlot update : batch) {
+                        this.applyCreativeSlot(update.index, update.item);
+                        if (this.rejectedNativePickup) {
+                            break;
+                        }
+                    }
+                }
+                if (this.rejectedNativePickup) {
+                    return;
                 }
             }
             this.flushCreativeDrop();
         });
     }
 
-    private boolean applyCreativeExchange(final CreativeSlot first, final CreativeSlot second) {
-        final Slot left = this.javaInventorySlot(first.index);
-        final Slot right = this.javaInventorySlot(second.index);
-        final Slot cursor = this.slot(this.user().get(InventoryTracker.class).getHudContainer(), 0);
-        if (left == null || right == null || left.equals(right) || !this.projected(cursor).isEmpty() || this.pendingCreativeDrop != null) {
+    private boolean applyCreativeBatch(final List<CreativeSlot> updates) {
+        if (updates.size() < 2 || this.pendingCreativeDrop != null) {
             return false;
         }
+        final Map<Slot, BedrockItem> before = new LinkedHashMap<>();
         final ItemRewriter items = this.user().get(ItemRewriter.class);
-        final boolean leftMatches = this.sameCreativeStack(items.javaItem(this.projected(left)), second.item);
-        final boolean rightMatches = this.sameCreativeStack(items.javaItem(this.projected(right)), first.item);
-        if (!leftMatches && !rightMatches) {
+        boolean movement = false;
+        for (CreativeSlot update : updates) {
+            final Slot slot = this.javaInventorySlot(update.index);
+            if (slot == null || update.item.amount() < 0 || update.item.amount() > 0xFF) {
+                this.rejectCreativeBatch("Invalid native inventory image");
+                return true;
+            }
+            final BedrockItem existing = this.projected(slot);
+            before.put(slot, existing);
+            if (!existing.isEmpty() && (update.item.isEmpty() || update.item.amount() < existing.amount()
+                || !this.creative.sameItem(items.javaItem(existing.copy()), update.item))) {
+                movement = true;
+            }
+        }
+        if (!movement) {
             return false;
         }
-        if (!leftMatches || !rightMatches) {
-            this.unsupported("Native exchange no longer matches both authoritative stacks");
-            return true;
+        final Slot cursor = this.slot(this.user().get(InventoryTracker.class).getHudContainer(), 0);
+        before.put(cursor, this.projected(cursor));
+        final Map<Slot, BedrockItem> desired = new LinkedHashMap<>();
+        final Map<Slot, Integer> available = new LinkedHashMap<>();
+        before.forEach((slot, item) -> available.put(slot, item.amount()));
+        for (CreativeSlot update : updates) {
+            final Slot target = this.javaInventorySlot(update.index);
+            final Item requested = update.item;
+            if (requested.isEmpty()) {
+                desired.put(target, BedrockItem.empty());
+                continue;
+            }
+            BedrockItem identity = null;
+            int needed = requested.amount();
+            for (var source : before.entrySet()) {
+                final BedrockItem item = source.getValue();
+                if (item.isEmpty() || !this.creative.sameItem(items.javaItem(item.copy()), requested)) {
+                    continue;
+                }
+                if (identity != null && identity.isDifferent(item)) {
+                    this.rejectCreativeBatch("Native images do not distinguish existing stack components");
+                    return true;
+                }
+                identity = item.copy();
+                final int used = Math.min(needed, available.get(source.getKey()));
+                needed -= used;
+                available.put(source.getKey(), available.get(source.getKey()) - used);
+            }
+            if (identity == null || needed != 0) {
+                this.rejectCreativeBatch("Native movement images do not conserve existing items");
+                return true;
+            }
+            identity.setAmount(requested.amount());
+            desired.put(target, identity);
         }
+        BedrockItem carried = BedrockItem.empty();
+        for (var source : before.entrySet()) {
+            final int remainder = available.get(source.getKey());
+            if (remainder == 0) {
+                continue;
+            }
+            if (!carried.isEmpty() && carried.isDifferent(source.getValue())) {
+                this.rejectCreativeBatch("Native images leave more than one carried item identity");
+                return true;
+            }
+            final int count = carried.amount() + remainder;
+            carried = source.getValue().copy();
+            carried.setAmount(count);
+        }
+        desired.put(cursor, carried);
         final InventoryClickPlan<Slot> plan = new InventoryClickPlan<>(this::projected, this::capacity);
-        plan.swap(left, right);
-        this.submitPlan(plan);
+        if (!plan.reconcile(desired, cursor)) {
+            this.rejectCreativeBatch("Native movement images cannot be applied conservatively");
+        } else if (!plan.operations().isEmpty()) {
+            this.submitPlan(plan);
+        }
         return true;
     }
 
-    private boolean sameCreativeStack(final Item before, final Item after) {
-        return before.isEmpty() && after.isEmpty() || before.amount() == after.amount() && this.creative.sameItem(before, after);
+    private void rejectCreativeBatch(final String reason) {
+        this.rejectedNativePickup = true;
+        this.unsupported(reason);
     }
 
     private void flushCreativeDrop() {

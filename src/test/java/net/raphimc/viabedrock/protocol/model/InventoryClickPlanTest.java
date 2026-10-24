@@ -118,4 +118,38 @@ public class InventoryClickPlanTest {
         assertEquals(32, plan.item("main").amount());
     }
 
+    @Test
+    public void nativeShiftMergeUsesOnlyConservedTransfers() {
+        final var plan = plan(Map.of("main", item(1, 64), "hotbar", item(1, 32), "empty", BedrockItem.empty(), "cursor", BedrockItem.empty()));
+        assertTrue(plan.reconcile(Map.of("main", BedrockItem.empty(), "hotbar", item(1, 64), "empty", item(1, 32), "cursor", BedrockItem.empty()), "cursor"));
+        assertTrue(plan.item("main").isEmpty());
+        assertEquals(64, plan.item("hotbar").amount());
+        assertEquals(32, plan.item("empty").amount());
+        assertTrue(plan.item("cursor").isEmpty());
+        assertEquals(2, plan.operations().size());
+        assertTrue(plan.operations().stream().allMatch(operation -> operation instanceof InventoryClickPlan.Transfer<?>));
+    }
+
+    @Test
+    public void nativeImagesRejectCreationAndStaleExchanges() {
+        final var plan = plan(Map.of("a", item(1, 64), "b", item(1, 32), "c", BedrockItem.empty(), "cursor", BedrockItem.empty()));
+        assertFalse(plan.reconcile(Map.of("a", BedrockItem.empty(), "b", item(1, 64), "c", item(1, 64), "cursor", BedrockItem.empty()), "cursor"));
+        assertTrue(plan.operations().isEmpty());
+        final var stale = plan(Map.of("a", item(2, 16), "b", item(3, 32), "cursor", BedrockItem.empty()));
+        assertFalse(stale.reconcile(Map.of("a", item(3, 32), "b", item(1, 1), "cursor", BedrockItem.empty()), "cursor"));
+        assertTrue(stale.operations().isEmpty());
+    }
+
+    @Test
+    public void wholeReciprocalStacksSwapAndCyclesUseCursorTransfers() {
+        final var swap = plan(Map.of("a", item(1, 1), "b", item(2, 32), "cursor", BedrockItem.empty()));
+        assertTrue(swap.reconcile(Map.of("a", item(2, 32), "b", item(1, 1), "cursor", BedrockItem.empty()), "cursor"));
+        assertEquals(1, swap.operations().size());
+        assertTrue(swap.operations().get(0) instanceof InventoryClickPlan.Swap<?>);
+        final var cycle = plan(Map.of("a", item(1, 1), "b", item(2, 32), "c", item(3, 16), "cursor", BedrockItem.empty()));
+        assertTrue(cycle.reconcile(Map.of("a", item(2, 32), "b", item(3, 16), "c", item(1, 1), "cursor", BedrockItem.empty()), "cursor"));
+        assertTrue(cycle.item("cursor").isEmpty());
+        assertTrue(cycle.operations().stream().allMatch(operation -> operation instanceof InventoryClickPlan.Transfer<?>));
+    }
+
 }

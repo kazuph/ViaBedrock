@@ -73,7 +73,7 @@ try:
         scenario.write_text('\n'.join(preparation + ['chat VB-regression-setup', 'expect-chat VB-regression-setup 10']) + '\n' + text)
         output = args.evidence / f'{name}.log'
         command = [str(args.java), '-cp', 'testclient/build/classes/java/main:testclient/build/dependencies/*',
-                   'JavaPlayClient', '25575', 'ViaJavaTest', str(scenario), str(args.trace)]
+                   'JavaPlayClient', '25576', 'ViaJavaTest', str(scenario), str(args.trace)]
         with output.open('w') as log:
             result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=180)
         results.append(dict(original=str(source), scenario=str(scenario), output=str(output), command=command, exit=result.returncode))

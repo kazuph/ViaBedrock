@@ -1,7 +1,10 @@
 # CAP60 exact three images: main9 empty, hotbar36 stone64, hotbar38 stone32.
 expect-spawn 30
 fixture-creative
-fixture-reset
+native-keep-book
+fixture-clear stone
+fixture-clear glass
+fixture-hotbar 2 air 1
 fixture 239.5 76 -81.5 30
 fixture-slot 0 stone 64
 fixture-hotbar 0 stone 32

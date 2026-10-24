@@ -25,7 +25,7 @@ def run(name, command):
 
 def client(name, scenario):
     return run(name, [str(args.java), '-cp', 'testclient/build/classes/java/main:testclient/build/dependencies/*',
-                      'JavaPlayClient', '25575', 'ViaJavaTest', str(scenario), str(args.trace)])
+                      'JavaPlayClient', '25576', 'ViaJavaTest', str(scenario), str(args.trace)])
 
 
 def console(command):
@@ -33,7 +33,7 @@ def console(command):
 
 
 try:
-    for name in ('creative-native-number-swap', 'creative-native-number-catalog', 'creative-native-number-empty',
+    for name in ('creative-native-shift-merge', 'creative-native-shift-persisted', 'creative-native-stale-tail', 'creative-native-number-swap', 'creative-native-number-catalog', 'creative-native-number-empty',
                  'creative-native-number-stale', 'creative-native-local-pickup-refusal', 'creative-native-local-refusal',
                  'creative-native-named-swap', 'creative-native-named-persisted', 'forced-close-distance', 'forced-close-server'):
         if not client(name, Path('testclient/scenarios') / f'{name}.txt'):

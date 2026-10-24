@@ -103,6 +103,71 @@ public final class InventoryClickPlan<K> {
         this.operations.add(new Drop<>(source, count));
     }
 
+    public boolean reconcile(final Map<K, BedrockItem> desired, final K cursor) {
+        for (K slot : desired.keySet()) {
+            final BedrockItem wanted = desired.get(slot);
+            if (!wanted.isEmpty() && wanted.amount() > this.capacity.applyAsInt(slot, wanted)) {
+                return false;
+            }
+            final BedrockItem identity = this.item(slot);
+            if (!identity.isEmpty()) {
+                final int before = desired.keySet().stream().map(this::item).filter(item -> !item.isDifferent(identity)).mapToInt(BedrockItem::amount).sum();
+                final int after = desired.values().stream().filter(item -> !item.isDifferent(identity)).mapToInt(BedrockItem::amount).sum();
+                if (before != after) {
+                    return false;
+                }
+            }
+            if (!wanted.isEmpty() && desired.keySet().stream().map(this::item).noneMatch(item -> !item.isDifferent(wanted))) {
+                return false;
+            }
+        }
+        while (desired.entrySet().stream().anyMatch(entry -> !sameStack(this.item(entry.getKey()), entry.getValue()))) {
+            final int previous = this.operations.size();
+            for (K target : desired.keySet()) {
+                final BedrockItem wanted = desired.get(target);
+                if (wanted.isEmpty() || sameStack(this.item(target), wanted)) {
+                    continue;
+                }
+                for (K source : desired.keySet()) {
+                    if (source.equals(target)) {
+                        continue;
+                    }
+                    final BedrockItem from = this.item(source);
+                    final BedrockItem to = this.item(target);
+                    if (sameStack(from, wanted) && sameStack(to, desired.get(source))) {
+                        this.swap(source, target);
+                        break;
+                    }
+                    if (!from.isEmpty() && !from.isDifferent(wanted) && (to.isEmpty() || !to.isDifferent(wanted))) {
+                        final BedrockItem keep = desired.get(source);
+                        final int surplus = from.amount() - (!keep.isEmpty() && !keep.isDifferent(from) ? keep.amount() : 0);
+                        this.transfer(source, target, Math.min(surplus, wanted.amount() - to.amount()));
+                    }
+                }
+            }
+            if (this.operations.size() == previous) {
+                if (!this.item(cursor).isEmpty()) {
+                    return false;
+                }
+                final K blocked = desired.keySet().stream().filter(slot -> !slot.equals(cursor)
+                    && !this.item(slot).isEmpty() && !sameStack(this.item(slot), desired.get(slot))).findFirst().orElse(null);
+                if (blocked == null) {
+                    return false;
+                }
+                final int count = this.item(blocked).amount();
+                this.transfer(blocked, cursor, count);
+                if (this.item(cursor).amount() != count) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameStack(final BedrockItem left, final BedrockItem right) {
+        return left.isEmpty() && right.isEmpty() || left.amount() == right.amount() && !left.isDifferent(right);
+    }
+
     public void quickMove(final K source, final List<K> destinations) {
         for (int pass = 0; pass < 2; pass++) {
             for (K target : destinations) {
