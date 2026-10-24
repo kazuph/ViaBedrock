@@ -97,9 +97,24 @@ public final class JavaPlayClient extends SessionAdapter {
     private final Map<Integer, ItemStack> droppedItems = new HashMap<>();
     private final Map<String, Set<Integer>> spawnMarkers = new HashMap<>();
     private final Set<ChunkPosition> loadedChunks = new HashSet<>();
+    private final Map<ChunkPosition, byte[]> chunkData = new HashMap<>();
 
     private record ChunkPosition(int x, int z) {}
     private int cacheCenterX, cacheCenterZ, cacheRadius = -1;
+
+    /** Block state in the latest received chunk packet, or -1 if the chunk is absent or unreadable. Overworld: min y -64, 24 sections. */
+    private int chunkBlockState(int x, int y, int z) {
+        byte[] data = chunkData.get(new ChunkPosition(x >> 4, z >> 4));
+        if (data == null) return -1;
+        try {
+            var buffer = Unpooled.wrappedBuffer(data);
+            int target = (y + 64) >> 4;
+            for (int section = 0; section < target; section++) MinecraftTypes.readChunkSection(buffer, 15, 7);
+            return MinecraftTypes.readChunkSection(buffer, 15, 7).getBlock(x & 15, y & 15, z & 15);
+        } catch (RuntimeException e) {
+            return -1;
+        }
+    }
 
     private synchronized void log(String event, Object data) {
         System.out.println(json.toJson(Map.of("time", System.nanoTime(), "event", event, "data", data)));
@@ -159,12 +174,14 @@ public final class JavaPlayClient extends SessionAdapter {
             } else if (packet instanceof ClientboundLevelChunkWithLightPacket chunk) {
                 synchronized (changed) {
                     loadedChunks.add(new ChunkPosition(chunk.getX(), chunk.getZ()));
+                    chunkData.put(new ChunkPosition(chunk.getX(), chunk.getZ()), chunk.getChunkData());
                     log("level_chunk", Map.of("x", chunk.getX(), "z", chunk.getZ()));
                     changed.notifyAll();
                 }
             } else if (packet instanceof ClientboundForgetLevelChunkPacket forget) {
                 synchronized (changed) {
                     loadedChunks.remove(new ChunkPosition(forget.getX(), forget.getZ()));
+                    chunkData.remove(new ChunkPosition(forget.getX(), forget.getZ()));
                     log("forget_level_chunk", Map.of("x", forget.getX(), "z", forget.getZ()));
                     changed.notifyAll();
                 }
@@ -300,6 +317,23 @@ public final class JavaPlayClient extends SessionAdapter {
                         TimeUnit.NANOSECONDS.timedWait(changed, remaining);
                     }
                 }
+                log("PASS", command);
+            }
+            case "expect-chunk-state" -> {
+                // expect-chunk-state <x> <y> <z> <java-block-state-id|any> <timeout-seconds>: decode the received chunk packet itself (not block updates)
+                int x = Integer.parseInt(args[1]), y = Integer.parseInt(args[2]), z = Integer.parseInt(args[3]);
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Long.parseLong(args[5]));
+                int seen = -1;
+                synchronized (changed) {
+                    while (true) {
+                        seen = chunkBlockState(x, y, z);
+                        if (args[4].equals("any") ? seen >= 0 : seen == Integer.parseInt(args[4])) break;
+                        long remaining = deadline - System.nanoTime();
+                        if (closed || remaining <= 0) throw new AssertionError("Chunk block state at " + x + "," + y + "," + z + " is " + seen + ": " + command);
+                        TimeUnit.NANOSECONDS.timedWait(changed, Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(200)));
+                    }
+                }
+                log("chunk_state", Map.of("x", x, "y", y, "z", z, "state", seen));
                 log("PASS", command);
             }
             case "view-distance" -> {
@@ -471,6 +505,11 @@ public final class JavaPlayClient extends SessionAdapter {
                 boolean hotbar = args[0].equals("fixture-hotbar");
                 if (!username.equals("ViaJavaTest") || slot < 0 || slot >= (hotbar ? 9 : 27) || !Set.of("stone", "glass", "oak_planks", "oak_log", "diamond_sword", "air").contains(args[2]) || count < 0 || count > 64) throw new IllegalArgumentException(command);
                 copyConsole("replaceitem entity ViaJavaTest slot." + (hotbar ? "hotbar" : "inventory") + " " + slot + " " + args[2] + " " + count + (args.length > 4 ? " " + Integer.parseInt(args[4]) : ""));
+            }
+            case "fixture-setblock" -> {
+                // fixture-setblock <x> <y> <z> <block and states>: only for the disposable copy server
+                if (!username.equals("ViaJavaTest")) throw new IllegalArgumentException(command);
+                copyConsole("setblock " + command.substring("fixture-setblock ".length()));
             }
             case "fixture-chest" -> {
                 if (!username.equals("ViaJavaTest") || !Set.of("normal", "full").contains(args[1])) throw new IllegalArgumentException(command);
