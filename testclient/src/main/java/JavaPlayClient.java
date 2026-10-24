@@ -320,7 +320,7 @@ public final class JavaPlayClient extends SessionAdapter {
                 log("PASS", command);
             }
             case "count-server" -> {
-                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log").contains(args[1])) throw new IllegalArgumentException(command);
+                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log", "diamond_sword").contains(args[1])) throw new IllegalArgumentException(command);
                 Process fence = new ProcessBuilder("ssh", "pc", "docker logs --timestamps --tail 1 minecraft-edu-test").redirectErrorStream(true).start();
                 String lastLine = new String(fence.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).replaceFirst("[\\r\\n]+$", "");
                 if (!fence.waitFor(30, TimeUnit.SECONDS) || fence.exitValue() != 0 || lastLine.isEmpty()) throw new IllegalStateException("No copy-server log watermark");
@@ -355,11 +355,11 @@ public final class JavaPlayClient extends SessionAdapter {
                 copyConsole("clear ViaJavaTest");
             }
             case "fixture-clear" -> {
-                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log").contains(args[1])) throw new IllegalArgumentException(command);
+                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log", "diamond_sword").contains(args[1])) throw new IllegalArgumentException(command);
                 copyConsole("clear ViaJavaTest " + args[1]);
             }
             case "fixture-clear-race" -> {
-                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log").contains(args[1])) throw new IllegalArgumentException(command);
+                if (!username.equals("ViaJavaTest") || !Set.of("stone", "glass", "oak_planks", "oak_log", "diamond_sword").contains(args[1])) throw new IllegalArgumentException(command);
                 long delay = Long.parseLong(args[2]);
                 if (delay < 0) throw new IllegalArgumentException(command);
                 consoleCommands.add(new ProcessBuilder("ssh", "pc", "docker exec minecraft-edu-test send-command 'clear ViaJavaTest " + args[1] + "'").inheritIO().start());
@@ -401,7 +401,7 @@ public final class JavaPlayClient extends SessionAdapter {
                 int slot = Integer.parseInt(args[1]), count = Integer.parseInt(args[3]);
                 boolean hotbar = args[0].equals("fixture-hotbar");
                 if (!username.equals("ViaJavaTest") || slot < 0 || slot >= (hotbar ? 9 : 27) || !Set.of("stone", "glass", "oak_planks", "oak_log", "diamond_sword", "air").contains(args[2]) || count < 0 || count > 64) throw new IllegalArgumentException(command);
-                copyConsole("replaceitem entity ViaJavaTest slot." + (hotbar ? "hotbar" : "inventory") + " " + slot + " " + args[2] + " " + count);
+                copyConsole("replaceitem entity ViaJavaTest slot." + (hotbar ? "hotbar" : "inventory") + " " + slot + " " + args[2] + " " + count + (args.length > 4 ? " " + Integer.parseInt(args[4]) : ""));
             }
             case "fixture-chest" -> {
                 if (!username.equals("ViaJavaTest") || !Set.of("normal", "full").contains(args[1])) throw new IllegalArgumentException(command);
@@ -531,6 +531,25 @@ public final class JavaPlayClient extends SessionAdapter {
             }
             case "snapshot" -> {
                 synchronized (changed) { log("snapshot", Map.of("containers", containers, "cursor", String.valueOf(cursor))); }
+            }
+            case "native-swap" -> {
+                int left = Integer.parseInt(args[1]), right = Integer.parseInt(args[2]);
+                ItemStack a, b;
+                synchronized (changed) { a = containers.get(0)[left]; b = containers.get(0)[right]; }
+                synchronized (session) {
+                    session.send(new ServerboundSetCreativeModeSlotPacket((short) left, b));
+                    session.send(new ServerboundSetCreativeModeSlotPacket((short) right, a));
+                }
+            }
+            case "native-pickup" -> {
+                int source = Integer.parseInt(args[1]);
+                synchronized (changed) { cursor = containers.get(0)[source]; containers.get(0)[source] = null; }
+                session.send(new ServerboundSetCreativeModeSlotPacket((short) source, null));
+            }
+            case "native-place" -> {
+                ItemStack carried;
+                synchronized (changed) { carried = cursor; cursor = null; }
+                session.send(new ServerboundSetCreativeModeSlotPacket(Short.parseShort(args[1]), carried));
             }
             case "native-drop" -> {
                 int slot = Integer.parseInt(args[1]), id = Integer.parseInt(args[2]);
