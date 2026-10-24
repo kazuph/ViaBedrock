@@ -1,0 +1,12 @@
+expect-spawn 60
+chunk-report spawn 16 6
+fixture 239.5 120 -81.5 30
+chunk-report start 16 6
+fixture 539.5 120 -81.5 30
+chunk-report tp300east 16 8
+fixture 1239.5 120 -81.5 30
+chunk-report tp1000east 16 8
+fixture 239.5 120 -81.5 30
+chunk-report return 16 8
+walk 339.5 -81.5 200
+chunk-report walk100 16 6

@@ -19,6 +19,9 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.Serv
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.Hand;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundForgetLevelChunkPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSetChunkCacheCenterPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSetChunkCacheRadiusPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.item.ItemStack;
 import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponents;
 import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponentTypes;
@@ -26,6 +29,7 @@ import org.geysermc.mcprotocollib.protocol.data.game.item.component.ItemEnchantm
 import org.geysermc.mcprotocollib.protocol.packet.configuration.clientbound.ClientboundRegistryDataPacket;
 import org.geysermc.mcprotocollib.protocol.packet.common.clientbound.ClientboundResourcePackPushPacket;
 import org.geysermc.mcprotocollib.protocol.packet.common.serverbound.ServerboundResourcePackPacket;
+import org.geysermc.mcprotocollib.protocol.packet.common.serverbound.ServerboundClientInformationPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerAbilitiesPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityDataPacket;
@@ -95,6 +99,7 @@ public final class JavaPlayClient extends SessionAdapter {
     private final Set<ChunkPosition> loadedChunks = new HashSet<>();
 
     private record ChunkPosition(int x, int z) {}
+    private int cacheCenterX, cacheCenterZ, cacheRadius = -1;
 
     private synchronized void log(String event, Object data) {
         System.out.println(json.toJson(Map.of("time", System.nanoTime(), "event", event, "data", data)));
@@ -154,6 +159,26 @@ public final class JavaPlayClient extends SessionAdapter {
             } else if (packet instanceof ClientboundLevelChunkWithLightPacket chunk) {
                 synchronized (changed) {
                     loadedChunks.add(new ChunkPosition(chunk.getX(), chunk.getZ()));
+                    log("level_chunk", Map.of("x", chunk.getX(), "z", chunk.getZ()));
+                    changed.notifyAll();
+                }
+            } else if (packet instanceof ClientboundForgetLevelChunkPacket forget) {
+                synchronized (changed) {
+                    loadedChunks.remove(new ChunkPosition(forget.getX(), forget.getZ()));
+                    log("forget_level_chunk", Map.of("x", forget.getX(), "z", forget.getZ()));
+                    changed.notifyAll();
+                }
+            } else if (packet instanceof ClientboundSetChunkCacheCenterPacket center) {
+                synchronized (changed) {
+                    cacheCenterX = center.getChunkX();
+                    cacheCenterZ = center.getChunkZ();
+                    log("set_chunk_cache_center", Map.of("x", center.getChunkX(), "z", center.getChunkZ()));
+                    changed.notifyAll();
+                }
+            } else if (packet instanceof ClientboundSetChunkCacheRadiusPacket radius) {
+                synchronized (changed) {
+                    cacheRadius = radius.getViewDistance();
+                    log("set_chunk_cache_radius", Map.of("radius", radius.getViewDistance()));
                     changed.notifyAll();
                 }
             } else if (packet instanceof ClientboundBlockUpdatePacket block) {
@@ -274,6 +299,42 @@ public final class JavaPlayClient extends SessionAdapter {
                         if (closed || remaining <= 0) throw new AssertionError("Chunk not received: " + command);
                         TimeUnit.NANOSECONDS.timedWait(changed, remaining);
                     }
+                }
+                log("PASS", command);
+            }
+            case "view-distance" -> {
+                // Same ClientInformation a real client sends when its render distance setting changes.
+                session.send(new ServerboundClientInformationPacket("en_us", Integer.parseInt(args[1]),
+                    org.geysermc.mcprotocollib.protocol.data.game.setting.ChatVisibility.FULL, true,
+                    List.of(org.geysermc.mcprotocollib.protocol.data.game.setting.SkinPart.values()),
+                    org.geysermc.mcprotocollib.protocol.data.game.entity.player.HandPreference.RIGHT_HAND, false, true,
+                    org.geysermc.mcprotocollib.protocol.data.game.setting.ParticleStatus.ALL));
+                log("PASS", command);
+            }
+            case "chunk-report" -> {
+                // chunk-report <label> <render-distance> <settle-seconds> [strict]: wait until the loaded set stops changing, then list missing chunks
+                // inside the square around the player's chunk (what a real client would draw) and around the last SET_CHUNK_CACHE_CENTER.
+                int distance = Integer.parseInt(args[2]);
+                long settle = TimeUnit.SECONDS.toNanos(Long.parseLong(args[3]));
+                long stableSince = System.nanoTime();
+                int last = -1;
+                synchronized (changed) {
+                    while (System.nanoTime() - stableSince < settle) {
+                        if (loadedChunks.size() != last) { last = loadedChunks.size(); stableSince = System.nanoTime(); }
+                        TimeUnit.MILLISECONDS.timedWait(changed, 200);
+                    }
+                    int px = (int) Math.floor(playerX) >> 4, pz = (int) Math.floor(playerZ) >> 4;
+                    List<String> missingPlayer = new ArrayList<>(), missingCenter = new ArrayList<>();
+                    for (int dx = -distance; dx <= distance; dx++) for (int dz = -distance; dz <= distance; dz++) {
+                        if (!loadedChunks.contains(new ChunkPosition(px + dx, pz + dz))) missingPlayer.add((px + dx) + "," + (pz + dz));
+                        if (!loadedChunks.contains(new ChunkPosition(cacheCenterX + dx, cacheCenterZ + dz))) missingCenter.add((cacheCenterX + dx) + "," + (cacheCenterZ + dz));
+                    }
+                    int total = (2 * distance + 1) * (2 * distance + 1);
+                    log("chunk_report", Map.of("label", args[1], "player_chunk", px + "," + pz, "cache_center", cacheCenterX + "," + cacheCenterZ,
+                        "cache_radius", cacheRadius, "loaded", loadedChunks.size(), "expected", total,
+                        "missing_around_player", missingPlayer.size(), "missing_around_center", missingCenter.size(),
+                        "missing_player_sample", missingPlayer.subList(0, Math.min(40, missingPlayer.size()))));
+                    if (args.length > 4 && args[4].equals("strict") && !missingPlayer.isEmpty()) throw new AssertionError("Missing " + missingPlayer.size() + "/" + total + " chunks around player at " + args[1]);
                 }
                 log("PASS", command);
             }

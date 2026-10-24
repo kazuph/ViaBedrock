@@ -1,0 +1,43 @@
+expect-spawn 60
+fixture 239.5 120 -81.5 30
+chunk-report south0 12 6
+walk 239.5 68.5 300
+chunk-report south1 12 3
+walk 239.5 218.5 300
+chunk-report south2 12 3
+walk 239.5 368.5 300
+chunk-report south3 12 3
+walk 239.5 518.5 300
+chunk-report south4 12 3
+walk 239.5 668.5 300
+chunk-report south5 12 3
+walk 239.5 818.5 300
+chunk-report south6 12 3
+fixture 239.5 120 -81.5 30
+chunk-report north0 12 6
+walk 239.5 -231.5 300
+chunk-report north1 12 3
+walk 239.5 -381.5 300
+chunk-report north2 12 3
+walk 239.5 -531.5 300
+chunk-report north3 12 3
+walk 239.5 -681.5 300
+chunk-report north4 12 3
+walk 239.5 -831.5 300
+chunk-report north5 12 3
+walk 239.5 -981.5 300
+chunk-report north6 12 3
+fixture 239.5 120 -81.5 30
+chunk-report west0 12 6
+walk 89.5 -81.5 300
+chunk-report west1 12 3
+walk -60.5 -81.5 300
+chunk-report west2 12 3
+walk -210.5 -81.5 300
+chunk-report west3 12 3
+walk -360.5 -81.5 300
+chunk-report west4 12 3
+walk -510.5 -81.5 300
+chunk-report west5 12 3
+walk -660.5 -81.5 300
+chunk-report west6 12 3
