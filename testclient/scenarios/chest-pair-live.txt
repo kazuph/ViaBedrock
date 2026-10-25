@@ -1,0 +1,12 @@
+expect-spawn 60
+view-distance 16
+fixture 241.5 80 -76.5 30
+expect-chunk 15 -5 30
+fixture-setblock 246 100 -76 air
+fixture-setblock 247 100 -76 air
+fixture-setblock 246 100 -76 chest ["minecraft:cardinal_direction"="north"]
+fixture-setblock 247 100 -76 chest ["minecraft:cardinal_direction"="north"]
+expect-block 246 100 -76 5546 15
+expect-block 247 100 -76 5548 15
+fixture-setblock 246 100 -76 air
+fixture-setblock 247 100 -76 air

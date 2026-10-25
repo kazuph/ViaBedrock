@@ -116,7 +116,8 @@ public class ChunkTracker extends StoredObject {
 
     public String state() {
         return "center=" + this.centerX + "," + this.centerZ + " radius=" + this.radius + " chunks=" + this.chunks.size()
-            + " reqs=" + this.subChunkRequests.size() + " pending=" + this.pendingSubChunks.size();
+            + " reqs=" + this.subChunkRequests.size() + " pending=" + this.pendingSubChunks.size()
+            + " awaiting=" + this.chunks.values().stream().filter(BedrockChunk::isAwaitingSubChunks).count();
     }
 
     public void setCenter(final int x, final int z) {

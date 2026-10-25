@@ -1,0 +1,7 @@
+expect-spawn 60
+view-distance 16
+fixture 241.5 80 -76.5 30
+expect-chunk 15 -5 30
+expect-chunk-state 240 76 -80 any 20
+expect-chunk-state 242 76 -80 any 20
+expect-chunk-state 243 76 -80 any 20
