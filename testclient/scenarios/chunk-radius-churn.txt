@@ -1,0 +1,67 @@
+expect-spawn 60
+view-distance 16
+fixture 239.5 200 -81.5 30
+chunk-report base 16 10
+fixture 239.5 200 -81.5 30
+fixture 255.5 200 -81.5 30
+view-distance 6
+fixture 271.5 200 -81.5 30
+fixture 239.5 200 -81.5 30
+view-distance 16
+fixture 255.5 200 -81.5 30
+fixture 271.5 200 -81.5 30
+view-distance 6
+fixture 239.5 200 -81.5 30
+fixture 255.5 200 -81.5 30
+view-distance 16
+fixture 271.5 200 -81.5 30
+fixture 239.5 200 -81.5 30
+view-distance 6
+fixture 255.5 200 -81.5 30
+fixture 271.5 200 -81.5 30
+view-distance 16
+fixture 239.5 200 -81.5 30
+fixture 255.5 200 -81.5 30
+view-distance 6
+fixture 271.5 200 -81.5 30
+fixture 239.5 200 -81.5 30
+view-distance 16
+fixture 255.5 200 -81.5 30
+fixture 271.5 200 -81.5 30
+view-distance 6
+fixture 239.5 200 -81.5 30
+fixture 255.5 200 -81.5 30
+view-distance 16
+fixture 271.5 200 -81.5 30
+fixture 239.5 200 -81.5 30
+view-distance 6
+fixture 255.5 200 -81.5 30
+fixture 271.5 200 -81.5 30
+view-distance 16
+fixture 239.5 200 -81.5 30
+fixture 255.5 200 -81.5 30
+view-distance 6
+fixture 271.5 200 -81.5 30
+fixture 239.5 200 -81.5 30
+view-distance 16
+fixture 255.5 200 -81.5 30
+fixture 271.5 200 -81.5 30
+view-distance 6
+fixture 239.5 200 -81.5 30
+fixture 255.5 200 -81.5 30
+view-distance 16
+fixture 271.5 200 -81.5 30
+fixture 239.5 200 -81.5 30
+view-distance 6
+fixture 255.5 200 -81.5 30
+fixture 271.5 200 -81.5 30
+view-distance 16
+fixture 239.5 200 -81.5 30
+fixture 255.5 200 -81.5 30
+view-distance 6
+fixture 271.5 200 -81.5 30
+fixture 239.5 200 -81.5 30
+view-distance 16
+view-distance 16
+fixture 239.5 200 -81.5 30
+chunk-report end 16 20
